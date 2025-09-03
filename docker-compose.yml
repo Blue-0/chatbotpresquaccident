@@ -19,3 +19,5 @@ services:
     # (optionnel) volume pour surcharger /public
     # volumes:
     #   - ./public:/app/public
+    networks:
+      - web
