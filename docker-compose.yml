@@ -1,4 +1,8 @@
 version: "3.8"
+networks:
+  web:
+    external: true
+
 services:
   nextjs:
     build:
