@@ -11,6 +11,7 @@ services:
       args:
         # <-- passe la variable AU BUILD
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
     ports:
       - "${PORT:-3000}:3000"
     environment:
