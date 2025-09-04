@@ -40,8 +40,9 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ text }), {
       headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e?.message || "Network error" }), {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Network error";
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });

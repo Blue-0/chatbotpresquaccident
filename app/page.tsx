@@ -28,8 +28,9 @@ export default function Page() {
       } else {
         setAnswer(json.text || "—");
       }
-    } catch (e: any) {
-      setError(e?.message || "Erreur réseau");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Erreur réseau";
+      setError(message);
     } finally {
       setLoading(false);
     }
