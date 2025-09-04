@@ -9,7 +9,6 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # <-- passe la variable AU BUILD
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     ports:
       - "${PORT:-3000}:3000"
@@ -18,11 +17,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       HOSTNAME: 0.0.0.0
       PORT: ${PORT:-3000}
-      # Côté runtime (serveur) si tu en as d'autres :
       API_BASE_URL: ${API_BASE_URL:-}
     restart: unless-stopped
-    # (optionnel) volume pour surcharger /public
-    # volumes:
-    #   - ./public:/app/public
     networks:
       - web
