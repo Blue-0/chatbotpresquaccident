@@ -1,15 +1,15 @@
 "use client";
-import { useState } from "react";
+import React, { useState } from "react";
 
 type AskResponse = { text?: string; error?: string };
 
 export default function Page() {
-  const [prompt, setPrompt] = useState("");
-  const [answer, setAnswer] = useState("");
+  const [prompt, setPrompt] = useState<string>("");
+  const [answer, setAnswer] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);     // efface l'erreur précédente
     setAnswer("");      // efface la réponse précédente => "sans historique"
@@ -22,14 +22,26 @@ export default function Page() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
       });
-      const json: AskResponse = await r.json();
+
+      // On tente de parser le JSON en sécurisant un minimum
+      const json = (await r.json()) as unknown;
+      const data: AskResponse =
+        typeof json === "object" && json !== null
+          ? (json as AskResponse)
+          : {};
+
       if (!r.ok) {
-        setError(json.error || "Erreur serveur");
+        setError(data.error || "Erreur serveur");
       } else {
-        setAnswer(json.text || "—");
+        setAnswer(data.text || "—");
       }
-    } catch (e: any) {
-      setError(e?.message || "Erreur réseau");
+    } catch (err) {
+      // plus de "any" : on affine le type de manière sûre
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(String(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -45,19 +57,37 @@ export default function Page() {
           id="prompt"
           placeholder="Pose ta question…"
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+            setPrompt(e.target.value)
+          }
           rows={5}
           style={{ padding: 8 }}
         />
-        <button type="submit" disabled={loading || !prompt.trim()} aria-busy={loading}>
+        <button
+          type="submit"
+          disabled={loading || !prompt.trim()}
+          aria-busy={loading}
+        >
           {loading ? "Envoi…" : "Envoyer"}
         </button>
       </form>
 
-      {error && <div role="alert" style={{ color: "crimson" }}>{error}</div>}
+      {error && (
+        <div role="alert" style={{ color: "crimson" }}>
+          {error}
+        </div>
+      )}
 
       {answer && (
-        <section aria-live="polite" style={{ whiteSpace: "pre-wrap", border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
+        <section
+          aria-live="polite"
+          style={{
+            whiteSpace: "pre-wrap",
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            padding: 12,
+          }}
+        >
           {answer}
         </section>
       )}
