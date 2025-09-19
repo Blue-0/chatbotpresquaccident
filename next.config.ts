@@ -1,9 +1,13 @@
-import type { NextConfig } from "next";
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Génère .next/standalone (idéal pour Docker)
+  output: "standalone",
 
-const nextConfig: NextConfig = {
-  output: 'standalone',
-  experimental: {
-  },
+  // (optionnel) strict mode React
+  reactStrictMode: true,
+
+  // (optionnel) si tu utilises app/ et images distantes, etc.
+  // images: { remotePatterns: [{ protocol: 'https', hostname: '...' }] },
 };
 
-export default nextConfig;
+module.exports = nextConfig;

@@ -1,23 +1,16 @@
-version: "3.8"
-networks:
-  web:
-    external: true
+version: "3.9"
 
 services:
-  nextjs:
+  web:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-    ports:
-      - "${PORT:-3000}:3000"
     environment:
-      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
-      NODE_ENV: ${NODE_ENV:-production}
-      HOSTNAME: 0.0.0.0
-      PORT: ${PORT:-3000}
-      API_BASE_URL: ${API_BASE_URL:-}
+      NODE_ENV: production
+      # Passe tes variables ici ou via un fichier .env
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:3000}
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "3000:3000"
     restart: unless-stopped
-    networks:
-      - web
