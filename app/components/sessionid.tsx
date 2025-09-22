@@ -2,15 +2,15 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { buttonVariants } from "@/src/components/ui/button";
-import { useSessionId } from "@/src/lib/session";
+import { getSessionId } from "@/src/lib/session";
 
 export const SessionId = () => {
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string>("");
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
-    setSessionId(useSessionId());
+    setSessionId(getSessionId());
   }, []);
 
   if (!isClient) {

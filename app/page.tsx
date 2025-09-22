@@ -1,13 +1,11 @@
 "use client";
-import React, { useState } from "react";
-type AskResponse = { text?: string; error?: string };
+import React from "react";
+import LoginPage from "./Login/page";
 
 export default function Page() {
   return (
-  <main>
-    {typeof window !== "" && (
-    require("./Login/page").default()
-    )}
-  </main>
+    <main>
+      {typeof window !== "undefined" && <LoginPage />}
+    </main>
   );
 }

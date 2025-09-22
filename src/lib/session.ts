@@ -1,5 +1,3 @@
-import { randomUUID } from 'crypto';
-
 // Hook pour gérer la session côté client uniquement
 export function useSessionId(): string | null {
   if (typeof window === 'undefined') {
