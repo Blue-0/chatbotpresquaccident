@@ -26,7 +26,7 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body
-        className={`${raleway.variable} ${poppins.variable} max-w-lg px-4 py-6`}
+        className={`${raleway.variable} ${poppins.variable} px-4`}
       >
         {children}
       </body>

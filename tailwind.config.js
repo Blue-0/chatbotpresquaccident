@@ -9,7 +9,20 @@ module.exports = {
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      boxShadowColor: {
+        'shadowlight': 'var(--greenlight)',
+      },
+        fontFamily:{
+            'poppins': ['Poppins', 'sans-serif'],
+            'raleway': ['Raleway', 'sans-serif'],
+        },
+        borderColor: {
+            'borderlight': 'var(--greenlight)',
+            'borderdark': 'var(--greendark)',
+            'borderorange': 'var(--orange)',
+        }
+    },
   },
   plugins: [],
 }
