@@ -42,9 +42,7 @@ export async function POST(request: NextRequest) {
         
         // Essayer différents noms de modèles selon la documentation Mistral
         const possibleModels = [
-            'voxtral-mini-latest',           
-            'mistral-large',       // Version simple
-            'large-latest'         // Version courte
+            'voxtral-mini-2507'
         ];
         
         mistralFormData.append('model', possibleModels[0]); // Commencer par whisper-1
