@@ -39,92 +39,87 @@ export async function POST(request: NextRequest) {
         // Créer un FormData selon la documentation Mistral AI
         const mistralFormData = new FormData();
         mistralFormData.append('file', audioFile, 'audio.wav');
-        
-        // Essayer différents noms de modèles selon la documentation Mistral
-        const possibleModels = [
-            'voxtral-mini-2507'
-        ];
-        
-        mistralFormData.append('model', possibleModels[0]); // Commencer par whisper-1
+        mistralFormData.append('model', 'voxtral-mini-latest'); // Modèle correct selon votre indication
         mistralFormData.append('language', 'fr'); // Langue française
         mistralFormData.append('response_format', 'json'); // Format de réponse
         
-        console.log("Tentative de transcription avec Mistral AI...");
-        console.log("Modèles à tester:", possibleModels);
+        console.log("Tentative de transcription avec Voxtral (voxtral-mini-latest)...");
         
-        // Essayer chaque modèle jusqu'à ce qu'un fonctionne
-        for (const modelName of possibleModels) {
-            try {
-                console.log(`Test du modèle: ${modelName}`);
-                
-                const testFormData = new FormData();
-                testFormData.append('file', audioFile, 'audio.wav');
-                testFormData.append('model', modelName);
-                testFormData.append('language', 'fr');
-                testFormData.append('response_format', 'json');
-                
-                const endpoint = '/v1/audio/transcriptions';
-                console.log(`Appel API Mistral: ${baseUrl}${endpoint}`);
-                
-                const response = await fetch(`${baseUrl}${endpoint}`, {
-                    method: "POST",
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                    },
-                    body: testFormData,
-                });
-
-                console.log(`Réponse Mistral avec ${modelName}:`, response.status, response.statusText);
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log("Résultat transcription Mistral:", result);
-                    
-                    // Format de réponse selon Mistral AI (similaire à OpenAI)
-                    const transcribedText = result.text || result.transcript || '';
-                    
-                    if (transcribedText && transcribedText.trim().length > 0) {
-                        console.log("Transcription Mistral réussie avec", modelName, ":", transcribedText);
-                        return NextResponse.json({ 
-                            text: transcribedText.trim(),
-                            confidence: result.confidence || 1.0,
-                            language: result.language || 'fr',
-                            duration: result.duration,
-                            model_used: modelName,
-                            endpoint_used: "mistral-ai"
-                        });
-                    }
-                } else {
-                    const errorText = await response.text();
-                    console.log(`Modèle ${modelName} échoué:`, response.status, errorText);
-                    
-                    // Si c'est une erreur de modèle, continuer avec le suivant
-                    if (response.status === 400 && errorText.includes('model')) {
-                        continue;
-                    }
-                    
-                    // Pour d'autres erreurs, sortir de la boucle
-                    throw new Error(`Erreur API: ${response.status} - ${errorText}`);
-                }
-            } catch (modelError) {
-                console.error(`Erreur avec modèle ${modelName}:`, modelError);
-                // Continuer avec le modèle suivant
-                continue;
-            }
-        }
-        
-        // Si aucun modèle n'a fonctionné
-        console.log("Aucun modèle Mistral n'a fonctionné, utilisation du fallback");
-        
-        // Fallback en mode développement
-        if (process.env.NODE_ENV === 'development') {
-            return NextResponse.json({ 
-                text: "Transcription de test - Aucun modèle Mistral valide trouvé",
-                confidence: 0.5,
-                endpoint_used: "fallback"
+        try {
+            const endpoint = '/v1/audio/transcriptions';
+            console.log(`Appel API Mistral: ${baseUrl}${endpoint}`);
+            
+            const response = await fetch(`${baseUrl}${endpoint}`, {
+                method: "POST",
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+                body: mistralFormData,
             });
+
+            console.log(`Réponse Mistral:`, response.status, response.statusText);
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log("Résultat transcription Mistral:", result);
+                
+                // Format de réponse selon Mistral AI (similaire à OpenAI)
+                const transcribedText = result.text || result.transcript || '';
+                
+                if (!transcribedText || transcribedText.trim().length === 0) {
+                    console.log("Réponse Mistral reçue mais texte vide:", result);
+                    return NextResponse.json({ 
+                        error: "Transcription vide",
+                        details: result 
+                    }, { status: 400 });
+                }
+                
+                console.log("Transcription Voxtral réussie:", transcribedText);
+                return NextResponse.json({ 
+                    text: transcribedText.trim(),
+                    confidence: result.confidence || 1.0,
+                    language: result.language || 'fr',
+                    duration: result.duration,
+                    model_used: 'voxtral-mini-latest',
+                    endpoint_used: "mistral-ai"
+                });
+            } else {
+                const errorText = await response.text();
+                console.error(`Erreur API Mistral:`, response.status, errorText);
+                
+                // Fallback en mode développement
+                if (process.env.NODE_ENV === 'development') {
+                    return NextResponse.json({ 
+                        text: "Test de transcription vocale - API Mistral indisponible",
+                        confidence: 0.5,
+                        endpoint_used: "fallback",
+                        error_details: errorText
+                    });
+                }
+                
+                return NextResponse.json({ 
+                    error: "Erreur API Mistral", 
+                    details: errorText,
+                    status: response.status
+                }, { status: response.status });
+            }
+        } catch (fetchError) {
+            console.error("Erreur fetch Mistral:", fetchError);
+            
+            // Fallback en mode développement
+            if (process.env.NODE_ENV === 'development') {
+                return NextResponse.json({ 
+                    text: "Test de transcription - Erreur réseau Mistral",
+                    confidence: 0.5,
+                    endpoint_used: "fallback"
+                });
+            }
+            
+            return NextResponse.json({ 
+                error: "Erreur de connexion à Mistral AI",
+                details: fetchError instanceof Error ? fetchError.message : 'Network error'
+            }, { status: 503 });
         }
-        
     } catch (error) {
         console.error("Erreur transcription complète:", error);
         console.error("Stack:", error instanceof Error ? error.stack : 'No stack');
