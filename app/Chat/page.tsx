@@ -27,6 +27,9 @@ interface Message {
 export default function ChatPage() {
     const { sessionId, isLoaded } = useSessionId();
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    
     const [messages, setMessages] = useState<Message[]>([
         {
             id: '1',
@@ -36,7 +39,9 @@ export default function ChatPage() {
         }
     ]);
     const [inputMessage, setInputMessage] = useState('');
-    const [loadingTTS, setLoadingTTS] = useState<string | null>(null); // Pour gérer l'état de chargement du TTS
+    const [loadingTTS, setLoadingTTS] = useState<string | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
 
     // Auto-scroll vers le bas à chaque nouveau message
     useEffect(() => {
@@ -48,8 +53,28 @@ export default function ChatPage() {
         setLoadingTTS(messageId);
         
         try {
-            // Nettoyer le contenu HTML pour ne garder que le texte
-            const textContent = messageContent.replace(/<[^>]*>/g, '');
+            // Nettoyer et valider le contenu HTML pour ne garder que le texte
+            const textContent = messageContent
+                .replace(/<[^>]*>/g, '') // Supprimer les balises HTML
+                .replace(/&nbsp;/g, ' ') // Remplacer les espaces insécables
+                .replace(/&amp;/g, '&') // Décoder les entités HTML
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .trim();
+            
+            // Vérifier que le texte n'est pas vide
+            if (!textContent || textContent.length === 0) {
+                console.error('Texte vide pour TTS');
+                return;
+            }
+
+            // Limiter la longueur pour éviter les textes trop longs
+            const maxLength = 1000;
+            const finalText = textContent.length > maxLength 
+                ? textContent.substring(0, maxLength) + "..."
+                : textContent;
+            
+            console.log('Texte à synthétiser:', finalText.substring(0, 100) + '...');
             
             const response = await fetch('/api/tts', {
                 method: 'POST',
@@ -57,29 +82,141 @@ export default function ChatPage() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    text: textContent,
-                    voice: 'fr', // ou la voix que vous utilisez avec Bark
+                    text: finalText,
+                    voice: 'fr_speaker_0', // Utiliser une voix Bark compatible
                 })
             });
 
             if (response.ok) {
-                const audioBlob = await response.blob();
-                const audioUrl = URL.createObjectURL(audioBlob);
-                const audio = new Audio(audioUrl);
+                const contentType = response.headers.get('content-type');
                 
-                audio.play();
-                
-                // Nettoyer l'URL après la lecture
-                audio.addEventListener('ended', () => {
-                    URL.revokeObjectURL(audioUrl);
-                });
+                if (contentType && contentType.includes('audio/')) {
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    
+                    audio.play().catch(error => {
+                        console.error('Erreur lors de la lecture audio:', error);
+                    });
+                    
+                    // Nettoyer l'URL après la lecture
+                    audio.addEventListener('ended', () => {
+                        URL.revokeObjectURL(audioUrl);
+                    });
+                } else {
+                    // Si ce n'est pas de l'audio, c'est probablement une erreur JSON
+                    const errorData = await response.json();
+                    console.error('Erreur TTS:', errorData);
+                }
             } else {
-                console.error('Erreur lors de la génération TTS');
+                const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
+                console.error('Erreur lors de la génération TTS:', errorData.error);
             }
         } catch (error) {
             console.error('Erreur TTS:', error);
         } finally {
             setLoadingTTS(null);
+        }
+    };
+
+    // Fonction pour démarrer l'enregistrement vocal
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+                await transcribeAudio(audioBlob);
+                
+                // Arrêter le stream
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            console.log('Enregistrement démarré...');
+            
+        } catch (error) {
+            console.error('Erreur lors du démarrage de l\'enregistrement:', error);
+            alert('Erreur : Impossible d\'accéder au microphone. Vérifiez les permissions.');
+        }
+    };
+
+    // Fonction pour arrêter l'enregistrement
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            console.log('Enregistrement arrêté...');
+        }
+    };
+
+    // Fonction pour transcription avec Voxtral
+    const transcribeAudio = async (audioBlob: Blob) => {
+        setIsTranscribing(true);
+        
+        try {
+            console.log("=== DEBUG CLIENT TRANSCRIPTION ===");
+            console.log("Taille audio blob:", audioBlob.size, "bytes");
+            console.log("Type audio blob:", audioBlob.type);
+            
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.wav');
+
+            console.log('Envoi vers Voxtral pour transcription...');
+            
+            const response = await fetch('/api/voxtral', {
+                method: 'POST',
+                body: formData
+            });
+
+            console.log('Réponse API:', response.status, response.statusText);
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('Transcription reçue:', result);
+                
+                if (result.text && result.text.trim()) {
+                    // Ajouter le texte transcrit à l'input
+                    setInputMessage(prev => prev + (prev ? ' ' : '') + result.text);
+                    console.log('Texte ajouté à l\'input:', result.text);
+                } else {
+                    console.error('Texte de transcription vide');
+                    alert('La transcription n\'a pas donné de résultat textuel');
+                }
+                
+            } else {
+                const errorData = await response.json().catch(async () => {
+                    const text = await response.text();
+                    return { error: 'Erreur de parsing JSON', details: text };
+                });
+                console.error('Erreur détaillée de transcription:', errorData);
+                alert(`Erreur de transcription: ${errorData.error} - ${errorData.details || ''}`);
+            }
+        } catch (error) {
+            console.error('Erreur transcription complète:', error);
+            console.error('Stack:', error instanceof Error ? error.stack : 'No stack');
+            alert(`Erreur lors de la transcription: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+        } finally {
+            setIsTranscribing(false);
+        }
+    };
+
+    // Fonction pour gérer le clic sur le bouton microphone
+    const handleMicClick = () => {
+        if (isRecording) {
+            stopRecording();
+        } else {
+            startRecording();
         }
     };
 
@@ -246,8 +383,10 @@ export default function ChatPage() {
                                     type="button"
                                     variant="outline"
                                     className="border-[#43bb8c] text-[#43bb8c] hover:bg-[#43bb8c] hover:text-white transition-colors px-4 py-2 h-[44px] rounded-full"
+                                    onClick={handleMicClick}
+                                    disabled={isTranscribing}
                                 >
-                                    🎤
+                                    {isRecording ? '⏹️' : '🎤'}
                                 </Button>
                             </div>
                             
