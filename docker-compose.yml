@@ -11,6 +11,9 @@ services:
       dockerfile: Dockerfile
     environment:
       NODE_ENV: production
+      AIRTABLE_API_KEY: ${AIRTABLE_API_KEY}
+      AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID}
+      AIRTABLE_TABLE_ID: ${AIRTABLE_TABLE_ID}
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
       API_BASE_URL: ${API_BASE_URL:-http://localhost:3000}
       NEXT_TELEMETRY_DISABLED: "1"
