@@ -36,11 +36,52 @@ export default function ChatPage() {
         }
     ]);
     const [inputMessage, setInputMessage] = useState('');
+    const [loadingTTS, setLoadingTTS] = useState<string | null>(null); // Pour gérer l'état de chargement du TTS
 
     // Auto-scroll vers le bas à chaque nouveau message
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    // Fonction pour gérer le TTS
+    const handleTTS = async (messageContent: string, messageId: string) => {
+        setLoadingTTS(messageId);
+        
+        try {
+            // Nettoyer le contenu HTML pour ne garder que le texte
+            const textContent = messageContent.replace(/<[^>]*>/g, '');
+            
+            const response = await fetch('/api/tts', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: textContent,
+                    voice: 'fr', // ou la voix que vous utilisez avec Bark
+                })
+            });
+
+            if (response.ok) {
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                
+                audio.play();
+                
+                // Nettoyer l'URL après la lecture
+                audio.addEventListener('ended', () => {
+                    URL.revokeObjectURL(audioUrl);
+                });
+            } else {
+                console.error('Erreur lors de la génération TTS');
+            }
+        } catch (error) {
+            console.error('Erreur TTS:', error);
+        } finally {
+            setLoadingTTS(null);
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -137,25 +178,44 @@ export default function ChatPage() {
                                     key={message.id}
                                     className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
                                 >
-                                    <div
-                                        className={`max-w-[80%] p-4 rounded-2xl ${
-                                            message.type === 'user'
-                                                ? 'bg-[#43bb8c] text-white rounded-br-md'
-                                                : 'bg-gray-100 text-gray-800 rounded-bl-md'
-                                        }`}
-                                    >
-                                        <div 
-                                            className="text-sm leading-relaxed"
-                                            dangerouslySetInnerHTML={{ __html: message.content }}
-                                        />
-                                        <span className={`text-xs mt-2 block ${
-                                            message.type === 'user' ? 'text-green-100' : 'text-gray-500'
-                                        }`}>
-                                            {message.timestamp.toLocaleTimeString('fr-FR', { 
-                                                hour: '2-digit', 
-                                                minute: '2-digit' 
-                                            })}
-                                        </span>
+                                    <div className="relative group max-w-[80%]">
+                                        <div
+                                            className={`p-4 rounded-2xl ${
+                                                message.type === 'user'
+                                                    ? 'bg-[#43bb8c] text-white rounded-br-md'
+                                                    : 'bg-gray-100 text-gray-800 rounded-bl-md'
+                                            }`}
+                                        >
+                                            <div 
+                                                className="text-sm leading-relaxed"
+                                                dangerouslySetInnerHTML={{ __html: message.content }}
+                                            />
+                                            <span className={`text-xs mt-2 block ${
+                                                message.type === 'user' ? 'text-green-100' : 'text-gray-500'
+                                            }`}>
+                                                {message.timestamp.toLocaleTimeString('fr-FR', { 
+                                                    hour: '2-digit', 
+                                                    minute: '2-digit' 
+                                                })}
+                                            </span>
+                                        </div>
+                                        
+                                        {/* Bouton TTS */}
+                                        <button
+                                            onClick={() => handleTTS(message.content, message.id)}
+                                            disabled={loadingTTS === message.id}
+                                            className={`absolute -top-2 ${message.type === 'user' ? '-left-10' : '-right-10'} 
+                                                opacity-0 group-hover:opacity-100 transition-opacity duration-200
+                                                bg-white shadow-lg rounded-full p-2 border border-gray-200
+                                                hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            title="Écouter le message"
+                                        >
+                                            {loadingTTS === message.id ? (
+                                                <div className="w-4 h-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#43bb8c]"></div>
+                                            ) : (
+                                                <span className="text-gray-600 text-sm">🔊</span>
+                                            )}
+                                        </button>
                                     </div>
                                 </div>
                             ))}
