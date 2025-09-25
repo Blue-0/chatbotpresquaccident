@@ -275,6 +275,83 @@ export default function ChatPage() {
         }
     };
 
+    // Fonction pour gérer le TTS natif du navigateur
+    const handleNativeTTS = async (messageContent: string, messageId: string) => {
+        try {
+            // Vérifier si le navigateur supporte la synthèse vocale
+            if (!('speechSynthesis' in window)) {
+                alert('Votre navigateur ne supporte pas la synthèse vocale');
+                return;
+            }
+
+            // Arrêter toute synthèse en cours
+            speechSynthesis.cancel();
+
+            // Nettoyer le contenu HTML pour ne garder que le texte
+            const textContent = messageContent
+                .replace(/<[^>]*>/g, '') // Supprimer les balises HTML
+                .replace(/&nbsp;/g, ' ') // Remplacer les espaces insécables
+                .replace(/&amp;/g, '&') // Décoder les entités HTML
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .trim();
+
+            if (!textContent || textContent.length === 0) {
+                console.error('Texte vide pour TTS natif');
+                return;
+            }
+
+            console.log('🟠 TTS natif pour message:', messageId);
+            console.log('Texte à synthétiser:', textContent.substring(0, 100) + (textContent.length > 100 ? "..." : ""));
+
+            // Créer l'utterance pour la synthèse vocale
+            const utterance = new SpeechSynthesisUtterance(textContent);
+            
+            // Configuration de la voix (essayer de trouver une voix française)
+            const voices = speechSynthesis.getVoices();
+            const frenchVoice = voices.find(voice => 
+                voice.lang.startsWith('fr') || 
+                voice.name.toLowerCase().includes('french') ||
+                voice.name.toLowerCase().includes('français')
+            );
+            
+            if (frenchVoice) {
+                utterance.voice = frenchVoice;
+                console.log('🎤 Voix française trouvée:', frenchVoice.name);
+            } else {
+                console.log('🎤 Aucune voix française trouvée, utilisation de la voix par défaut');
+            }
+
+            // Configuration des paramètres
+            utterance.rate = 0.9; // Vitesse légèrement ralentie pour une meilleure compréhension
+            utterance.pitch = 1.0; // Ton normal
+            utterance.volume = 1.0; // Volume maximal
+
+            // Gestionnaires d'événements
+            utterance.onstart = () => {
+                console.log('🟠 Synthèse vocale native démarrée');
+                setLoadingTTS(messageId); // Réutiliser l'état de loading
+            };
+
+            utterance.onend = () => {
+                console.log('🟠 Synthèse vocale native terminée');
+                setLoadingTTS(null);
+            };
+
+            utterance.onerror = (event) => {
+                console.error('❌ Erreur synthèse vocale native:', event.error);
+                setLoadingTTS(null);
+            };
+
+            // Démarrer la synthèse
+            speechSynthesis.speak(utterance);
+
+        } catch (error) {
+            console.error('❌ Erreur TTS natif:', error);
+            setLoadingTTS(null);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!inputMessage.trim()) return;
@@ -392,22 +469,37 @@ export default function ChatPage() {
                                             </span>
                                         </div>
                                         
-                                        {/* Bouton TTS */}
-                                        <button
-                                            onClick={() => handleTTS(message.content, message.id)}
-                                            disabled={loadingTTS === message.id}
-                                            className={`absolute -top-2 ${message.type === 'user' ? '-left-10' : '-right-10'} 
-                                                opacity-0 group-hover:opacity-100 transition-opacity duration-200
-                                                bg-white shadow-lg rounded-full p-2 border border-gray-200
-                                                hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed`}
-                                            title="Écouter le message"
-                                        >
-                                            {loadingTTS === message.id ? (
-                                                <div className="w-4 h-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#43bb8c]"></div>
-                                            ) : (
-                                                <span className="text-gray-600 text-sm">🔊</span>
-                                            )}
-                                        </button>
+                                        {/* Boutons TTS */}
+                                        <div className={`absolute -top-2 ${message.type === 'user' ? '-left-16' : '-right-16'} 
+                                            opacity-0 group-hover:opacity-100 transition-opacity duration-200
+                                            flex gap-1`}>
+                                            
+                                            {/* Bouton TTS ElevenLabs */}
+                                            <button
+                                                onClick={() => handleTTS(message.content, message.id)}
+                                                disabled={loadingTTS === message.id}
+                                                className="bg-white shadow-lg rounded-full p-2 border border-gray-200
+                                                    hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title="Écouter avec ElevenLabs (haute qualité)"
+                                            >
+                                                {loadingTTS === message.id ? (
+                                                    <div className="w-4 h-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#43bb8c]"></div>
+                                                ) : (
+                                                    <span className="text-gray-600 text-sm">🔊</span>
+                                                )}
+                                            </button>
+                                            
+                                            {/* Bouton TTS Natif du navigateur */}
+                                            <button
+                                                onClick={() => handleNativeTTS(message.content, message.id)}
+                                                disabled={loadingTTS === message.id}
+                                                className="bg-white shadow-lg rounded-full p-2 border border-gray-200
+                                                    hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title="Écouter avec la voix du téléphone/navigateur (gratuit et rapide)"
+                                            >
+                                                <span className="text-orange-600 text-sm">🟠</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
