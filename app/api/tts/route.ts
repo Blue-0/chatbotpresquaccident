@@ -1,55 +1,63 @@
-import { NextRequest, NextResponse } from "next/server";
+// app/api/tts/route.ts
+export const runtime = "node"; // force Node runtime si besoin
 
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
     try {
-        const body = await request.json();
-        
-        // Validation des données d'entrée
-        if (!body.text || typeof body.text !== 'string' || body.text.trim().length === 0) {
-            return NextResponse.json({ error: "Le texte est requis et ne peut pas être vide" }, { status: 400 });
+        const { message } = await req.json();
+
+        if (!message || typeof message !== 'string' || message.trim().length === 0) {
+            return new Response(JSON.stringify({ error: "Message requis" }), { status: 400 });
         }
 
-        const base = process.env.BARK_BASE_URL || "http://51.178.39.172:8001";
+        // URL du conteneur orpheus-tts dans votre réseau Docker
+        // Utilisez le nom du service Docker ou l'IP du conteneur
+        const ttsUrl = process.env.TTS_URL || "http://orpheus-tts:3001"; // Nom du service Docker
         
-        console.log("Tentative de connexion à Bark:", base);
-        console.log("Texte à synthétiser:", body.text.substring(0, 100) + "...");
-        
-        const response = await fetch(`${base}/generate`, {
+        console.log("Appel TTS vers:", ttsUrl + "/synthesize");
+        console.log("Message à synthétiser:", message.substring(0, 100) + "...");
+
+        // Appelle ton FastAPI (le conteneur orpheus-tts)
+        const resp = await fetch(ttsUrl + "/synthesize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                text: body.text.trim(),
-                voice: body.voice || "fr_speaker_0", // Voix par défaut pour Bark
-                ...body
-            }),
+            body: JSON.stringify({ message }),
         });
 
-        if (!response.ok) {
-            console.error("Erreur Bark:", response.status, response.statusText);
-            return NextResponse.json({ 
-                error: `Erreur Bark: ${response.status} - ${response.statusText}` 
-            }, { status: response.status });
+        console.log("Réponse TTS:", resp.status, resp.statusText);
+
+        if (!resp.ok) {
+            const errorText = await resp.text();
+            console.error("Erreur TTS:", errorText);
+            return new Response(JSON.stringify({ 
+                error: "TTS failed", 
+                details: errorText,
+                status: resp.status 
+            }), { status: 500 });
         }
 
-        const audioBuffer = await response.arrayBuffer();
+        // Proxy le flux audio au client (audio/wav)
+        const audioBuf = await resp.arrayBuffer();
         
-        if (audioBuffer.byteLength === 0) {
-            return NextResponse.json({ error: "Audio généré vide" }, { status: 500 });
+        if (audioBuf.byteLength === 0) {
+            console.error("Audio buffer vide");
+            return new Response(JSON.stringify({ error: "Audio vide généré" }), { status: 500 });
         }
+
+        console.log("Audio généré:", audioBuf.byteLength, "bytes");
         
-        return new NextResponse(audioBuffer, {
+        return new Response(audioBuf, {
             status: 200,
             headers: {
                 "Content-Type": "audio/wav",
-                "Content-Disposition": "inline; filename=audio.wav",
-                "Cache-Control": "no-cache",
+                "Content-Disposition": "inline; filename=tts.wav",
+                "Cache-Control": "no-store",
             },
         });
     } catch (error) {
         console.error("Erreur TTS complète:", error);
-        return NextResponse.json({ 
-            error: "Erreur serveur TTS", 
-            details: error instanceof Error ? error.message : "Erreur inconnue" 
-        }, { status: 500 });
+        return new Response(JSON.stringify({ 
+            error: "Erreur serveur TTS",
+            details: error instanceof Error ? error.message : "Erreur inconnue"
+        }), { status: 500 });
     }
 }

@@ -82,8 +82,7 @@ export default function ChatPage() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    text: finalText,
-                    voice: 'fr_speaker_0', // Utiliser une voix Bark compatible
+                    message: finalText // Utiliser 'message' au lieu de 'text' selon votre nouvelle API
                 })
             });
 
