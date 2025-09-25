@@ -3,14 +3,12 @@ import React, { useState, useRef, useEffect } from "react";
 import Particles from "@/src/components/Particles";
 import {
     Card,
-    CardAction,
     CardContent,
     CardDescription,
     CardFooter,
     CardHeader,
     CardTitle
 } from "@/src/components/ui/card";
-import {Label} from "@/src/components/ui/label";
 import {Input} from "@/src/components/ui/input";
 import {Button} from "@/src/components/ui/button";
 import {SessionId} from "@/app/components/sessionid";
@@ -25,7 +23,7 @@ interface Message {
 }
 
 export default function ChatPage() {
-    const { sessionId, isLoaded } = useSessionId();
+    const { sessionId } = useSessionId();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -48,33 +46,19 @@ export default function ChatPage() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // Fonction pour gérer le TTS
+    // Fonction pour gérer le TTS avec ElevenLabs
     const handleTTS = async (messageContent: string, messageId: string) => {
         setLoadingTTS(messageId);
         
         try {
-            // Nettoyer et valider le contenu HTML pour ne garder que le texte
-            const textContent = messageContent
-                .replace(/<[^>]*>/g, '') // Supprimer les balises HTML
-                .replace(/&nbsp;/g, ' ') // Remplacer les espaces insécables
-                .replace(/&amp;/g, '&') // Décoder les entités HTML
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .trim();
+            const startTime = Date.now();
             
-            // Vérifier que le texte n'est pas vide
-            if (!textContent || textContent.length === 0) {
-                console.error('Texte vide pour TTS');
-                return;
-            }
-
-            // Limiter la longueur pour éviter les textes trop longs
-            const maxLength = 1000;
-            const finalText = textContent.length > maxLength 
-                ? textContent.substring(0, maxLength) + "..."
-                : textContent;
+            console.log('🔊 Demande TTS ElevenLabs pour message ID:', messageId);
+            console.log('Contenu:', messageContent.substring(0, 100) + (messageContent.length > 100 ? "..." : ""));
             
-            console.log('Texte à synthétiser:', finalText.substring(0, 100) + '...');
+            // Timeout côté client généreux pour ElevenLabs (peut être lent)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 secondes pour ElevenLabs
             
             const response = await fetch('/api/tts', {
                 method: 'POST',
@@ -82,37 +66,109 @@ export default function ChatPage() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    message: finalText // Utiliser 'message' au lieu de 'text' selon votre nouvelle API
-                })
+                    message: messageContent // ElevenLabs gère le nettoyage côté serveur
+                }),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
+            const processingTime = Date.now() - startTime;
 
             if (response.ok) {
                 const contentType = response.headers.get('content-type');
                 
-                if (contentType && contentType.includes('audio/')) {
+                if (contentType && (contentType.includes('audio/') || contentType.includes('audio/mpeg'))) {
                     const audioBlob = await response.blob();
+                    
+                    if (audioBlob.size === 0) {
+                        console.error('❌ Audio blob vide reçu d\'ElevenLabs');
+                        return;
+                    }
+                    
+                    // Informations détaillées sur la génération ElevenLabs
+                    const serverProcessingTime = response.headers.get('X-Processing-Time');
+                    const messageLength = response.headers.get('X-Message-Length');
+                    const voiceProvider = response.headers.get('X-Voice-Provider');
+                    const voiceId = response.headers.get('X-Voice-ID');
+                    
+                    console.log(`🎵 Audio ElevenLabs reçu: ${audioBlob.size} bytes`);
+                    console.log(`⏱️ Traité en: ${serverProcessingTime}ms pour ${messageLength} caractères`);
+                    console.log(`🎤 Voix: ${voiceId} (${voiceProvider})`);
+                    
                     const audioUrl = URL.createObjectURL(audioBlob);
                     const audio = new Audio(audioUrl);
                     
+                    // ElevenLabs génère du MP3, qui est généralement compatible
                     audio.play().catch(error => {
-                        console.error('Erreur lors de la lecture audio:', error);
+                        console.error('❌ Erreur lors de la lecture audio ElevenLabs:', error);
                     });
                     
                     // Nettoyer l'URL après la lecture
                     audio.addEventListener('ended', () => {
                         URL.revokeObjectURL(audioUrl);
+                        console.log('🗑️ Ressources audio nettoyées');
+                    });
+                    
+                    // Nettoyer en cas d'erreur aussi
+                    audio.addEventListener('error', (e) => {
+                        URL.revokeObjectURL(audioUrl);
+                        console.error('❌ Erreur de lecture audio:', e);
                     });
                 } else {
-                    // Si ce n'est pas de l'audio, c'est probablement une erreur JSON
+                    // Si ce n'est pas de l'audio, c'est une erreur JSON d'ElevenLabs
                     const errorData = await response.json();
-                    console.error('Erreur TTS:', errorData);
+                    console.error('❌ Erreur ElevenLabs:', errorData);
+                    
+                    // Messages d'erreur spécifiques à ElevenLabs
+                    if (errorData.error?.includes('quota')) {
+                        console.error('💳 Quota ElevenLabs dépassé - vérifiez votre plan');
+                    } else if (errorData.error?.includes('voice')) {
+                        console.error('🎤 ID de voix ElevenLabs invalide');
+                    } else if (errorData.error?.includes('unauthorized')) {
+                        console.error('🔑 Clé API ElevenLabs invalide');
+                    } else {
+                        console.error('🔊 Erreur de synthèse vocale ElevenLabs:', errorData.error);
+                    }
                 }
             } else {
-                const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
-                console.error('Erreur lors de la génération TTS:', errorData.error);
+                const errorData = await response.json().catch(() => ({ 
+                    error: 'Erreur inconnue',
+                    details: `Status: ${response.status}`
+                }));
+                
+                console.error('❌ Erreur lors de la génération ElevenLabs:', errorData.error);
+                
+                // Messages d'erreur spécifiques selon le statut HTTP
+                if (response.status === 429) {
+                    console.error('💳 Quota ElevenLabs dépassé');
+                    if (errorData.messageLength) {
+                        console.error(`📝 Longueur du message: ${errorData.messageLength} caractères`);
+                    }
+                } else if (response.status === 401) {
+                    console.error('🔑 Authentification ElevenLabs échouée - vérifiez votre clé API');
+                } else if (response.status === 400) {
+                    console.error('📝 Requête invalide pour ElevenLabs');
+                } else if (response.status >= 500) {
+                    console.error('🔧 Problème du serveur ElevenLabs');
+                } else {
+                    console.error('❌ Erreur ElevenLabs:', errorData.error);
+                }
+                
+                // Log du temps de traitement si disponible
+                if (errorData.processingTime) {
+                    console.error(`⏱️ Temps écoulé: ${errorData.processingTime}ms`);
+                }
             }
         } catch (error) {
-            console.error('Erreur TTS:', error);
+            console.error('❌ Erreur TTS ElevenLabs complète:', error);
+            
+            if (error instanceof Error) {
+                if (error.name === 'AbortError') {
+                    console.error('⏰ TTS ElevenLabs annulé - Délai d\'attente dépassé côté client');
+                } else {
+                    console.error('🔊 Erreur TTS ElevenLabs:', error.message);
+                }
+            }
         } finally {
             setLoadingTTS(null);
         }
