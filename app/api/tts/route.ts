@@ -1,5 +1,5 @@
 // app/api/tts/route.ts
-export const runtime = "node"; // force Node runtime si besoin
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
     try {
