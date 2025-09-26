@@ -37,142 +37,14 @@ export default function ChatPage() {
         }
     ]);
     const [inputMessage, setInputMessage] = useState('');
-    const [loadingTTS, setLoadingTTS] = useState<string | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isSpeaking, setIsSpeaking] = useState<string | null>(null);
 
     // Auto-scroll vers le bas à chaque nouveau message
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
-
-    // Fonction pour gérer le TTS avec ElevenLabs
-    const handleTTS = async (messageContent: string, messageId: string) => {
-        setLoadingTTS(messageId);
-        
-        try {
-            const startTime = Date.now();
-            
-            console.log('🔊 Demande TTS ElevenLabs pour message ID:', messageId);
-            console.log('Contenu:', messageContent.substring(0, 100) + (messageContent.length > 100 ? "..." : ""));
-            
-            // Timeout côté client généreux pour ElevenLabs (peut être lent)
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 secondes pour ElevenLabs
-            
-            const response = await fetch('/api/tts', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    message: messageContent // ElevenLabs gère le nettoyage côté serveur
-                }),
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-            const processingTime = Date.now() - startTime;
-
-            if (response.ok) {
-                const contentType = response.headers.get('content-type');
-                
-                if (contentType && (contentType.includes('audio/') || contentType.includes('audio/mpeg'))) {
-                    const audioBlob = await response.blob();
-                    
-                    if (audioBlob.size === 0) {
-                        console.error('❌ Audio blob vide reçu d\'ElevenLabs');
-                        return;
-                    }
-                    
-                    // Informations détaillées sur la génération ElevenLabs
-                    const serverProcessingTime = response.headers.get('X-Processing-Time');
-                    const messageLength = response.headers.get('X-Message-Length');
-                    const voiceProvider = response.headers.get('X-Voice-Provider');
-                    const voiceId = response.headers.get('X-Voice-ID');
-                    
-                    console.log(`🎵 Audio ElevenLabs reçu: ${audioBlob.size} bytes`);
-                    console.log(`⏱️ Traité en: ${serverProcessingTime}ms pour ${messageLength} caractères`);
-                    console.log(`🎤 Voix: ${voiceId} (${voiceProvider})`);
-                    
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    const audio = new Audio(audioUrl);
-                    
-                    // ElevenLabs génère du MP3, qui est généralement compatible
-                    audio.play().catch(error => {
-                        console.error('❌ Erreur lors de la lecture audio ElevenLabs:', error);
-                    });
-                    
-                    // Nettoyer l'URL après la lecture
-                    audio.addEventListener('ended', () => {
-                        URL.revokeObjectURL(audioUrl);
-                        console.log('🗑️ Ressources audio nettoyées');
-                    });
-                    
-                    // Nettoyer en cas d'erreur aussi
-                    audio.addEventListener('error', (e) => {
-                        URL.revokeObjectURL(audioUrl);
-                        console.error('❌ Erreur de lecture audio:', e);
-                    });
-                } else {
-                    // Si ce n'est pas de l'audio, c'est une erreur JSON d'ElevenLabs
-                    const errorData = await response.json();
-                    console.error('❌ Erreur ElevenLabs:', errorData);
-                    
-                    // Messages d'erreur spécifiques à ElevenLabs
-                    if (errorData.error?.includes('quota')) {
-                        console.error('💳 Quota ElevenLabs dépassé - vérifiez votre plan');
-                    } else if (errorData.error?.includes('voice')) {
-                        console.error('🎤 ID de voix ElevenLabs invalide');
-                    } else if (errorData.error?.includes('unauthorized')) {
-                        console.error('🔑 Clé API ElevenLabs invalide');
-                    } else {
-                        console.error('🔊 Erreur de synthèse vocale ElevenLabs:', errorData.error);
-                    }
-                }
-            } else {
-                const errorData = await response.json().catch(() => ({ 
-                    error: 'Erreur inconnue',
-                    details: `Status: ${response.status}`
-                }));
-                
-                console.error('❌ Erreur lors de la génération ElevenLabs:', errorData.error);
-                
-                // Messages d'erreur spécifiques selon le statut HTTP
-                if (response.status === 429) {
-                    console.error('💳 Quota ElevenLabs dépassé');
-                    if (errorData.messageLength) {
-                        console.error(`📝 Longueur du message: ${errorData.messageLength} caractères`);
-                    }
-                } else if (response.status === 401) {
-                    console.error('🔑 Authentification ElevenLabs échouée - vérifiez votre clé API');
-                } else if (response.status === 400) {
-                    console.error('📝 Requête invalide pour ElevenLabs');
-                } else if (response.status >= 500) {
-                    console.error('🔧 Problème du serveur ElevenLabs');
-                } else {
-                    console.error('❌ Erreur ElevenLabs:', errorData.error);
-                }
-                
-                // Log du temps de traitement si disponible
-                if (errorData.processingTime) {
-                    console.error(`⏱️ Temps écoulé: ${errorData.processingTime}ms`);
-                }
-            }
-        } catch (error) {
-            console.error('❌ Erreur TTS ElevenLabs complète:', error);
-            
-            if (error instanceof Error) {
-                if (error.name === 'AbortError') {
-                    console.error('⏰ TTS ElevenLabs annulé - Délai d\'attente dépassé côté client');
-                } else {
-                    console.error('🔊 Erreur TTS ElevenLabs:', error.message);
-                }
-            }
-        } finally {
-            setLoadingTTS(null);
-        }
-    };
 
     // Fonction pour démarrer l'enregistrement vocal
     const startRecording = async () => {
@@ -241,7 +113,6 @@ export default function ChatPage() {
                 console.log('Transcription reçue:', result);
                 
                 if (result.text && result.text.trim()) {
-                    // Ajouter le texte transcrit à l'input
                     setInputMessage(prev => prev + (prev ? ' ' : '') + result.text);
                     console.log('Texte ajouté à l\'input:', result.text);
                 } else {
@@ -259,7 +130,6 @@ export default function ChatPage() {
             }
         } catch (error) {
             console.error('Erreur transcription complète:', error);
-            console.error('Stack:', error instanceof Error ? error.stack : 'No stack');
             alert(`Erreur lors de la transcription: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
         } finally {
             setIsTranscribing(false);
@@ -276,7 +146,7 @@ export default function ChatPage() {
     };
 
     // Fonction pour gérer le TTS natif du navigateur
-    const handleNativeTTS = async (messageContent: string, messageId: string) => {
+    const handleNativeTTS = (messageContent: string, messageId: string) => {
         try {
             // Vérifier si le navigateur supporte la synthèse vocale
             if (!('speechSynthesis' in window)) {
@@ -323,24 +193,24 @@ export default function ChatPage() {
             }
 
             // Configuration des paramètres
-            utterance.rate = 0.9; // Vitesse légèrement ralentie pour une meilleure compréhension
+            utterance.rate = 0.9; // Vitesse légèrement ralentie
             utterance.pitch = 1.0; // Ton normal
             utterance.volume = 1.0; // Volume maximal
 
             // Gestionnaires d'événements
             utterance.onstart = () => {
                 console.log('🟠 Synthèse vocale native démarrée');
-                setLoadingTTS(messageId); // Réutiliser l'état de loading
+                setIsSpeaking(messageId);
             };
 
             utterance.onend = () => {
                 console.log('🟠 Synthèse vocale native terminée');
-                setLoadingTTS(null);
+                setIsSpeaking(null);
             };
 
             utterance.onerror = (event) => {
                 console.error('❌ Erreur synthèse vocale native:', event.error);
-                setLoadingTTS(null);
+                setIsSpeaking(null);
             };
 
             // Démarrer la synthèse
@@ -348,7 +218,7 @@ export default function ChatPage() {
 
         } catch (error) {
             console.error('❌ Erreur TTS natif:', error);
-            setLoadingTTS(null);
+            setIsSpeaking(null);
         }
     };
 
@@ -364,10 +234,9 @@ export default function ChatPage() {
         };
 
         setMessages(prev => [...prev, userMessage]);
-        const currentMessage = inputMessage; // Stocker le message avant de vider l'input
+        const currentMessage = inputMessage;
         setInputMessage('');
 
-        // Appel à l'API locale qui fera le proxy vers n8n
         try {
             const response = await fetch('/api/chat', {
                 method: 'POST',
@@ -425,16 +294,18 @@ export default function ChatPage() {
                 
                 {/* Header Card */}
                 <Card className="mb-2 bg-white/95 shadow-lg border border-gray-200">
-                    <CardHeader className="pb-3">
+                    <CardHeader className="pb-3 bg-transparent border-gray-200">
                         <div className="flex justify-between items-center">
                             <div>
-                                <CardTitle className="text-2xl font-bold text-gray-800">E2I AgentSecu</CardTitle>
-                                <CardDescription className="text-gray-600">
+                                <CardTitle className="text-xl sm:text-2xl font-bold text-gray-800">E2I AgentSecu</CardTitle>                                <CardDescription className="text-gray-600 max-sm:hidden">
                                     Assistant IA pour vos questions de sécurité
                                 </CardDescription>
                             </div>
                             <SessionId />
                         </div>
+                        <CardContent className="text-gray-600 text-sm sm:hidden block p-0">
+                            Assistant IA pour vos questions de sécurité
+                        </CardContent>
                     </CardHeader>
                 </Card>
 
@@ -469,48 +340,36 @@ export default function ChatPage() {
                                             </span>
                                         </div>
                                         
-                                        {/* Boutons TTS */}
-                                        <div className={`absolute -top-2 ${message.type === 'user' ? '-left-16' : '-right-16'} 
-                                            opacity-0 group-hover:opacity-100 transition-opacity duration-200
-                                            flex gap-1`}>
-                                            
-                                            {/* Bouton TTS ElevenLabs */}
-                                            <button
-                                                onClick={() => handleTTS(message.content, message.id)}
-                                                disabled={loadingTTS === message.id}
-                                                className="bg-white shadow-lg rounded-full p-2 border border-gray-200
-                                                    hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                title="Écouter avec ElevenLabs (haute qualité)"
-                                            >
-                                                {loadingTTS === message.id ? (
-                                                    <div className="w-4 h-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#43bb8c]"></div>
-                                                ) : (
-                                                    <span className="text-gray-600 text-sm">🔊</span>
-                                                )}
-                                            </button>
-                                            
-                                            {/* Bouton TTS Natif du navigateur */}
+                                        {/* Bouton TTS Natif du navigateur */}
+                                        <div className={`absolute -top-2 ${message.type === 'user' ? '-left-12' : '-right-12'} 
+                                            opacity-0 group-hover:opacity-100 transition-opacity duration-200`}>
                                             <button
                                                 onClick={() => handleNativeTTS(message.content, message.id)}
-                                                disabled={loadingTTS === message.id}
+                                                disabled={isSpeaking === message.id}
                                                 className="bg-white shadow-lg rounded-full p-2 border border-gray-200
                                                     hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                title="Écouter avec la voix du téléphone/navigateur (gratuit et rapide)"
+                                                title="Écouter avec la voix du navigateur (gratuit et rapide)"
                                             >
-                                                <span className="text-orange-600 text-sm">🟠</span>
+                                                {isSpeaking === message.id ? (
+                                                    <div className="w-4 h-4 animate-pulse">
+                                                        <span className="text-orange-600 text-sm">🟠</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-orange-600 text-sm">🟠</span>
+                                                )}
                                             </button>
                                         </div>
                                     </div>
                                 </div>
                             ))}
-                            <div ref={messagesEndRef} /> {/* Référence pour le défilement automatique */}
+                            <div ref={messagesEndRef} />
                         </div>
                     </CardContent>
                 </Card>
 
                 {/* Input Area */}
-                <Card className="bg-white/95 shadow-lg border border-gray-200">
-                    <CardFooter className="p-4">
+                <Card className="bg-transparent shadow-none border-0">
+                    <CardFooter className="p-0 bg-transparent border-0">
                         <form onSubmit={handleSubmit} className="w-full">
                             <div className="flex gap-2 items-end bg-gray-50 rounded-3xl p-2 border-2 border-gray-200 focus-within:border-[#43bb8c] transition-colors">
                                 <Input
@@ -536,7 +395,6 @@ export default function ChatPage() {
                                     {isRecording ? '⏹️' : '🎤'}
                                 </Button>
                             </div>
-                            
                         </form>
 
                     </CardFooter>
