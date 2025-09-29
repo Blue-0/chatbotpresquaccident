@@ -254,8 +254,8 @@ export default function ChatPage() {
                 const data = await response.json();
                 const parsedContent = await marked.parse(data.response) || 'Réponse reçue du webhook';
                 
-                // Diviser le message si il contient la séquence "\n\n---\n"
-                const messageParts = parsedContent.split('\n\n---\n');
+                // Diviser le message si il contient la balise <hr>
+                const messageParts = parsedContent.split('<hr>');
                 
                 if (messageParts.length > 1) {
                     // Plusieurs messages à créer
