@@ -252,7 +252,10 @@ export default function ChatPage() {
         
             if (response.ok) {
                 const data = await response.json();
-                const parsedContent = await marked.parse(data.response) || 'Réponse reçue du webhook';
+                let parsedContent = await marked.parse(data.response) || 'Réponse reçue du webhook';
+                
+                // Transformer les balises <em> en balises avec style personnalisé pour les messages du bot
+                parsedContent = parsedContent.replace(/<em>(.*?)<\/em>/g, '<span style="font-weight: bold; color: #F28C06;">$1</span>');
                 
                 // Diviser le message si il contient la balise <hr>
                 const messageParts = parsedContent.split('<hr>');
