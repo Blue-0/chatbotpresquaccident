@@ -252,13 +252,34 @@ export default function ChatPage() {
         
             if (response.ok) {
                 const data = await response.json();
-                const aiMessage: Message = {
-                    id: (Date.now() + 1).toString(),
-                    type: 'ai',
-                    content: await marked.parse(data.response) || 'Réponse reçue du webhook',
-                    timestamp: new Date()
-                };
-                setMessages(prev => [...prev, aiMessage]);
+                const parsedContent = await marked.parse(data.response) || 'Réponse reçue du webhook';
+                
+                // Diviser le message si il contient la séquence "\n\n---\n"
+                const messageParts = parsedContent.split('\n\n---\n');
+                
+                if (messageParts.length > 1) {
+                    // Plusieurs messages à créer
+                    messageParts.forEach((part, index) => {
+                        if (part.trim()) { // Ne pas créer de message vide
+                            const aiMessage: Message = {
+                                id: (Date.now() + index + 1).toString(),
+                                type: 'ai',
+                                content: part.trim(),
+                                timestamp: new Date()
+                            };
+                            setMessages(prev => [...prev, aiMessage]);
+                        }
+                    });
+                } else {
+                    // Message unique
+                    const aiMessage: Message = {
+                        id: (Date.now() + 1).toString(),
+                        type: 'ai',
+                        content: parsedContent,
+                        timestamp: new Date()
+                    };
+                    setMessages(prev => [...prev, aiMessage]);
+                }
             } else {
                 throw new Error('Erreur lors de l\'appel au webhook');
             }
