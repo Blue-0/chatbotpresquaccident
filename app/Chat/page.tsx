@@ -1,5 +1,7 @@
 'use client';
 import React, { useState, useRef, useEffect } from "react";
+import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import Particles from "@/src/components/Particles";
 import {
     Card,
@@ -23,11 +25,12 @@ interface Message {
 }
 
 export default function ChatPage() {
+    const { data: session, status } = useSession()
+    const router = useRouter()
     const { sessionId } = useSessionId();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
-    
     const [messages, setMessages] = useState<Message[]>([
         {
             id: '1',
@@ -40,6 +43,16 @@ export default function ChatPage() {
     const [isRecording, setIsRecording] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState<string | null>(null);
+
+    // Rediriger vers login si pas de session
+    useEffect(() => {
+        if (status === 'loading') return // Encore en chargement
+
+        if (!session) {
+            router.push('/Login')
+            return
+        }
+    }, [session, status, router])
 
     // Auto-scroll vers le bas à chaque nouveau message
     useEffect(() => {
@@ -297,6 +310,39 @@ export default function ChatPage() {
         }
     };
 
+    // Afficher un loader pendant la vérification
+    if (status === 'loading') {
+        return (
+            <div className="relative min-h-screen flex justify-center items-center">
+                <div className="absolute inset-0 z-0">
+                    <Particles
+                        particleColors={['#43bb8c']}
+                        particleCount={300}
+                        particleSpread={6}
+                        speed={0.05}
+                        particleBaseSize={80}
+                        moveParticlesOnHover={false}
+                        alphaParticles={true}
+                        disableRotation={false}
+                    />
+                </div>
+                <div className="relative z-10 text-lg text-gray-600">
+                    Vérification de votre session...
+                </div>
+            </div>
+        )
+    }
+
+    // Si pas de session, ne rien afficher (la redirection va se faire)
+    if (!session) {
+        return null
+    }
+
+    // Fonction de déconnexion
+    const handleSignOut = async () => {
+        await signOut({ callbackUrl: '/Login' })
+    }
+
     return (
         <div className="relative min-h-screen flex flex-col">
             {/* Particles Background */}
@@ -321,14 +367,25 @@ export default function ChatPage() {
                     <CardHeader className="pb-3 bg-transparent border-gray-200">
                         <div className="flex justify-between items-center">
                             <div>
-                                <CardTitle className="text-xl sm:text-2xl font-bold text-gray-800">E2I AgentSecu</CardTitle>                                <CardDescription className="text-gray-600 max-sm:hidden">
+                                <CardTitle className="text-xl sm:text-2xl font-bold text-gray-800">
+                                    E2I AgentSecu
+                                </CardTitle>
+                                <CardDescription className="text-gray-600 max-sm:hidden">
                                     Assistant IA pour vos questions de sécurité
                                 </CardDescription>
                             </div>
-                            <SessionId />
+                            <div className="flex items-center gap-2">
+
+                                <Button
+                                    onClick={handleSignOut}
+                                    className="text-xs"
+                                >
+                                    <SessionId />
+                                </Button>
+                            </div>
                         </div>
                         <CardContent className="text-gray-600 text-sm sm:hidden block p-0">
-                            Assistant IA pour vos questions de sécurité
+                            Assistant IA - {session.user?.email}
                         </CardContent>
                     </CardHeader>
                 </Card>
