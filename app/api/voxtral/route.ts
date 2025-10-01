@@ -36,14 +36,41 @@ export async function POST(request: NextRequest) {
             }, { status: 401 });
         }
         
-        // Créer un FormData selon la documentation Mistral AI
-        const mistralFormData = new FormData();
-        mistralFormData.append('file', audioFile, 'audio.wav');
-        mistralFormData.append('model', 'voxtral-mini-latest'); // Modèle correct selon votre indication
-        mistralFormData.append('language', 'fr'); // Langue française
-        mistralFormData.append('response_format', 'json'); // Format de réponse
+        // Validation du fichier selon les spécifications Mistral AI
+        const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB max
+        const SUPPORTED_FORMATS = ['audio/wav', 'audio/mp3', 'audio/flac', 'audio/m4a', 'audio/ogg'];
         
-        console.log("Tentative de transcription avec Voxtral (voxtral-mini-latest)...");
+        if (audioFile.size > MAX_FILE_SIZE) {
+            return NextResponse.json({ 
+                error: "Fichier trop volumineux",
+                details: `Taille max: 25MB, reçu: ${Math.round(audioFile.size / 1024 / 1024)}MB`
+            }, { status: 400 });
+        }
+
+        // Vérifier le format (accepter WAV même si converti)
+        if (!SUPPORTED_FORMATS.includes(audioFile.type) && !audioFile.name.endsWith('.wav')) {
+            return NextResponse.json({ 
+                error: "Format non supporté",
+                details: `Formats acceptés: ${SUPPORTED_FORMATS.join(', ')}, WAV`,
+                received: audioFile.type
+            }, { status: 400 });
+        }
+        
+        // Créer un FormData selon la documentation Mistral AI (paramètres corrects)
+        const mistralFormData = new FormData();
+        mistralFormData.append('file', audioFile, audioFile.name);
+        mistralFormData.append('model', 'voxtral-mini-latest');
+        mistralFormData.append('language', 'fr');
+        mistralFormData.append('response_format', 'json');
+        // Supprimer temperature et prompt (non supportés par l'API audio de Mistral)
+        
+        console.log("Tentative de transcription avec Voxtral...");
+        console.log("Paramètres optimisés:", {
+            model: 'voxtral-mini-latest',
+            language: 'fr',
+            fileSize: audioFile.size + ' bytes',
+            mimeType: audioFile.type
+        });
         
         try {
             const endpoint = '/v1/audio/transcriptions';

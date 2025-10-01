@@ -11,7 +11,6 @@ import {
     CardHeader,
     CardTitle
 } from "@/src/components/ui/card";
-import {Input} from "@/src/components/ui/input";
 import {Button} from "@/src/components/ui/button";
 import {SessionId} from "@/app/components/sessionid";
 import { useSessionId } from "@/app/hooks/useSessionId";
@@ -29,8 +28,7 @@ export default function ChatPage() {
     const router = useRouter()
     const { sessionId } = useSessionId();
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [messages, setMessages] = useState<Message[]>([
         {
             id: '1',
@@ -43,6 +41,12 @@ export default function ChatPage() {
     const [isRecording, setIsRecording] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState<string | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const transcriptionBufferRef = useRef<string>('');
+    const pendingTranscriptionsRef = useRef<Set<number>>(new Set());
+    const recognitionRef = useRef<any>(null);
+    const [isLiveTranscribing, setIsLiveTranscribing] = useState(false);
 
     // Rediriger vers login si pas de session
     useEffect(() => {
@@ -59,14 +63,500 @@ export default function ChatPage() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // Fonction pour démarrer l'enregistrement vocal
-    const startRecording = async () => {
+    // Auto-resize du textarea
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = '44px'; // Reset à la hauteur minimale
+            const scrollHeight = textareaRef.current.scrollHeight;
+            const maxHeight = 120; // Hauteur maximale (environ 4 lignes)
+            textareaRef.current.style.height = Math.min(scrollHeight, maxHeight) + 'px';
+        }
+    }, [inputMessage]);
+
+    // Fonction optimisée pour démarrer l'enregistrement Voxtral selon les bonnes pratiques Mistral AI
+    const startVoxtralLiveTranscription = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    channelCount: 1, // Mono recommandé par Mistral
+                    sampleRate: 16000, // 16kHz optimal pour Voxtral
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true // Ajout pour stabiliser le volume
+                }
+            });
+            
+            // Configuration optimisée selon la doc Mistral AI
+            const supportedMimeTypes = [
+                'audio/wav',
+                'audio/mp4', // M4A supporté
+                'audio/webm;codecs=opus', // Fallback à convertir
+                'audio/webm'
+            ];
+            
+            let selectedMimeType = 'audio/webm'; // Fallback à convertir
+            for (const mimeType of supportedMimeTypes) {
+                if (MediaRecorder.isTypeSupported(mimeType)) {
+                    selectedMimeType = mimeType;
+                    break;
+                }
+            }
+
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: selectedMimeType,
+                audioBitsPerSecond: 64000 // Augmenté pour meilleure qualité (recommandation Mistral)
+            });
+
+            console.log('🎤 Format audio sélectionné:', selectedMimeType);
+
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+            transcriptionBufferRef.current = '';
+            pendingTranscriptionsRef.current.clear();
+
+            let segmentCounter = 0;
+            // Optimisation selon Mistral : segments de 5-10 secondes pour meilleure précision
+            const SEGMENT_DURATION = 8000; // 8 secondes (dans la plage optimale 5-30s)
+            const MIN_AUDIO_SIZE = 8192; // Taille minimale augmentée pour éviter segments trop courts
+            const MAX_CONCURRENT_TRANSCRIPTIONS = 2; // Limité selon les bonnes pratiques
+
+            mediaRecorder.ondataavailable = async (event) => {
+                if (event.data.size > MIN_AUDIO_SIZE) {
+                    audioChunksRef.current.push(event.data);
+                    
+                    // Respect des limites de concurrence recommandées
+                    if (pendingTranscriptionsRef.current.size < MAX_CONCURRENT_TRANSCRIPTIONS) {
+                        const audioBlob = new Blob([event.data], { type: selectedMimeType });
+                        
+                        // Vérification de la taille selon les limites Mistral (25MB max)
+                        if (audioBlob.size > 25 * 1024 * 1024) {
+                            console.warn(`⚠️ Segment trop volumineux: ${audioBlob.size} bytes (max 25MB)`);
+                            return;
+                        }
+                        
+                        const currentSegmentId = segmentCounter++;
+                        pendingTranscriptionsRef.current.add(currentSegmentId);
+                        
+                        // Transcription asynchrone optimisée
+                        transcribeSegmentWithVoxtralOptimized(audioBlob, currentSegmentId, selectedMimeType)
+                            .finally(() => {
+                                pendingTranscriptionsRef.current.delete(currentSegmentId);
+                            });
+                    } else {
+                        console.log('🔄 Transcriptions en cours, segment ignoré (évite surcharge API)');
+                    }
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                console.log('🎤 Enregistrement Voxtral terminé');
+                setIsRecording(false);
+                setIsTranscribing(false);
+                
+                // Attendre que toutes les transcriptions en cours se terminent
+                const waitForPendingTranscriptions = () => {
+                    return new Promise<void>((resolve) => {
+                        const checkInterval = setInterval(() => {
+                            if (pendingTranscriptionsRef.current.size === 0) {
+                                clearInterval(checkInterval);
+                                resolve();
+                            }
+                        }, 100);
+                        
+                        // Timeout après 5 secondes
+                        setTimeout(() => {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }, 5000);
+                    });
+                };
+                
+                await waitForPendingTranscriptions();
+                
+                // Nettoyer le texte final et appliquer le buffer
+                const finalText = transcriptionBufferRef.current.trim();
+                if (finalText) {
+                    setInputMessage(prev => {
+                        const cleanedPrev = prev.replace(/\[Transcription en cours\.\.\.\]/g, '').trim();
+                        return cleanedPrev ? `${cleanedPrev} ${finalText}` : finalText;
+                    });
+                }
+                transcriptionBufferRef.current = '';
+                
+                // Arrêter le stream
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.onerror = (event) => {
+                console.error('❌ Erreur MediaRecorder:', event);
+                setIsRecording(false);
+                setIsTranscribing(false);
+                pendingTranscriptionsRef.current.clear();
+                // Arrêter le stream en cas d'erreur
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            // Démarrer l'enregistrement
+            mediaRecorder.start();
+            setIsRecording(true);
+            setIsTranscribing(true);
+            
+            // Créer des segments optimisés selon les recommandations Mistral
+            const segmentInterval = setInterval(() => {
+                if (mediaRecorder.state === 'recording') {
+                    mediaRecorder.requestData();
+                }
+            }, SEGMENT_DURATION);
+
+            // Stocker l'interval pour le nettoyer
+            mediaRecorderRef.current.segmentInterval = segmentInterval;
+
+            console.log('🎤 Enregistrement Voxtral optimisé démarré:', {
+                segmentDuration: SEGMENT_DURATION + 'ms (recommandation Mistral: 5-30s)',
+                minAudioSize: MIN_AUDIO_SIZE + ' bytes',
+                maxConcurrent: MAX_CONCURRENT_TRANSCRIPTIONS,
+                sampleRate: '16kHz',
+                bitrate: '64kbps'
+            });
+            
+        } catch (error) {
+            console.error('Erreur lors du démarrage de l\'enregistrement Voxtral:', error);
+            if (error.name === 'NotAllowedError') {
+                alert('Permission microphone refusée. Veuillez autoriser l\'accès dans les paramètres de votre navigateur.');
+            } else {
+                alert('Erreur microphone. Vérifiez votre équipement audio.');
+            }
+            setIsRecording(false);
+            setIsTranscribing(false);
+        }
+    };
+
+    // Fonction corrigée pour convertir WebM vers WAV compatible avec Mistral AI
+    const convertWebMToWav = async (webmBlob: Blob): Promise<Blob> => {
+        try {
+            console.log('🔄 Début conversion WebM vers WAV conforme Mistral...');
+            
+            // Configuration AudioContext optimale selon Mistral AI
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 16000, // 16kHz recommandé par Mistral
+                latencyHint: 'playback'
+            });
+            
+            const arrayBuffer = await webmBlob.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            console.log('📊 AudioBuffer analysé:', {
+                sampleRate: audioBuffer.sampleRate,
+                numberOfChannels: audioBuffer.numberOfChannels,
+                length: audioBuffer.length,
+                duration: audioBuffer.duration + 's'
+            });
+            
+            // Paramètres WAV stricts selon spécifications Mistral
+            const targetSampleRate = 16000;
+            const numberOfChannels = 1; // Mono obligatoire
+            const bitsPerSample = 16; // PCM 16-bit
+            const bytesPerSample = bitsPerSample / 8;
+            const blockAlign = numberOfChannels * bytesPerSample;
+            const byteRate = targetSampleRate * blockAlign;
+            
+            // Resampling et conversion en mono
+            const inputChannelData = audioBuffer.getChannelData(0);
+            const inputSampleRate = audioBuffer.sampleRate;
+            const resampleRatio = targetSampleRate / inputSampleRate;
+            const outputLength = Math.floor(audioBuffer.length * resampleRatio);
+            const outputSamples = new Float32Array(outputLength);
+            
+            // Resampling avec interpolation linéaire améliorée
+            for (let i = 0; i < outputLength; i++) {
+                const sourceIndex = i / resampleRatio;
+                const index = Math.floor(sourceIndex);
+                const fraction = sourceIndex - index;
+                
+                if (index + 1 < inputChannelData.length) {
+                    outputSamples[i] = inputChannelData[index] * (1 - fraction) + 
+                                      inputChannelData[index + 1] * fraction;
+                } else {
+                    outputSamples[i] = inputChannelData[Math.min(index, inputChannelData.length - 1)] || 0;
+                }
+            }
+            
+            // Calcul des tailles pour le format WAV
+            const dataSize = outputLength * bytesPerSample;
+            const fileSize = 36 + dataSize;
+            
+            // Création du buffer WAV avec header complet et correct
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+            
+            // Fonction utilitaire pour écrire des chaînes ASCII
+            const writeString = (offset: number, string: string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+            
+            // Header RIFF/WAV complet selon standard WAV
+            writeString(0, 'RIFF');                           // ChunkID (4 bytes)
+            view.setUint32(4, fileSize, true);                // ChunkSize (4 bytes, little-endian)
+            writeString(8, 'WAVE');                           // Format (4 bytes)
+            
+            // Subchunk1 (fmt)
+            writeString(12, 'fmt ');                          // Subchunk1ID (4 bytes)
+            view.setUint32(16, 16, true);                     // Subchunk1Size (4 bytes)
+            view.setUint16(20, 1, true);                      // AudioFormat (2 bytes) - PCM = 1
+            view.setUint16(22, numberOfChannels, true);       // NumChannels (2 bytes)
+            view.setUint32(24, targetSampleRate, true);       // SampleRate (4 bytes)
+            view.setUint32(28, byteRate, true);               // ByteRate (4 bytes)
+            view.setUint16(32, blockAlign, true);             // BlockAlign (2 bytes)
+            view.setUint16(34, bitsPerSample, true);          // BitsPerSample (2 bytes)
+            
+            // Subchunk2 (data)
+            writeString(36, 'data');                          // Subchunk2ID (4 bytes)
+            view.setUint32(40, dataSize, true);               // Subchunk2Size (4 bytes)
+            
+            // Conversion des échantillons en PCM 16-bit
+            let offset = 44;
+            for (let i = 0; i < outputLength; i++) {
+                // Clamp et conversion en entier 16-bit signé
+                let sample = Math.max(-1, Math.min(1, outputSamples[i]));
+                const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                view.setInt16(offset, Math.round(intSample), true); // Little-endian
+                offset += 2;
+            }
+            
+            // Validation du fichier WAV généré
+            const wavBlob = new Blob([buffer], { 
+                type: 'audio/wav'
+            });
+            
+            console.log('✅ Conversion WAV réussie:', {
+                inputFormat: 'WebM',
+                outputFormat: 'WAV PCM 16-bit',
+                inputSize: webmBlob.size + ' bytes',
+                outputSize: wavBlob.size + ' bytes',
+                sampleRate: targetSampleRate + 'Hz',
+                channels: numberOfChannels,
+                duration: (outputLength / targetSampleRate).toFixed(2) + 's',
+                compression: 'Aucune (PCM)'
+            });
+            
+            return wavBlob;
+            
+        } catch (error) {
+            console.error('❌ Erreur conversion WebM vers WAV:', error);
+            // Ne plus utiliser de fallback, lancer l'erreur pour diagnostic
+            throw new Error(`Conversion impossible: ${error.message}`);
+        }
+    };
+
+    // Fonction optimisée pour la transcription avec conversion WAV
+    const transcribeSegmentWithVoxtralOptimized = async (audioBlob: Blob, segmentId: number, originalMimeType: string, retryCount = 0) => {
+        const MAX_RETRIES = 2;
+        
+        try {
+            console.log(`📝 Transcription segment ${segmentId} (${audioBlob.size} bytes, ${originalMimeType}) - Tentative ${retryCount + 1}`);
+            
+            let processedBlob = audioBlob;
+            let fileName = `segment_${segmentId}.wav`;
+            
+            // Convertir WebM vers WAV si nécessaire
+            if (originalMimeType.includes('webm')) {
+                console.log(`🔄 Conversion WebM vers WAV pour segment ${segmentId}...`);
+                processedBlob = await convertWebMToWav(audioBlob);
+                console.log(`✅ Conversion terminée, nouvelle taille: ${processedBlob.size} bytes`);
+            } else if (originalMimeType.includes('wav')) {
+                fileName = `segment_${segmentId}.wav`;
+            }
+
+            const formData = new FormData();
+            formData.append('audio', processedBlob, fileName);
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // Timeout 15s pour la conversion
+
+            const response = await fetch('/api/voxtral', {
+                method: 'POST',
+                body: formData,
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`✅ Segment ${segmentId} transcrit:`, result.text?.substring(0, 50) + '...');
+                
+                if (result.text && result.text.trim()) {
+                    const cleanText = result.text.trim();
+                    
+                    // Buffer intelligent pour éviter les doublons et organiser le texte
+                    transcriptionBufferRef.current = (transcriptionBufferRef.current + ' ' + cleanText).trim();
+                    
+                    // Mise à jour de l'affichage avec buffer
+                    setInputMessage(prev => {
+                        const baseText = prev.replace(/\[Transcription en cours...\]/g, '').trim();
+                        // Utiliser le buffer pour un texte plus cohérent
+                        return (baseText ? baseText + ' ' : '') + transcriptionBufferRef.current + ' [Transcription en cours...]';
+                    });
+                }
+            } else if (response.status === 429 && retryCount < MAX_RETRIES) {
+                // Rate limiting : attendre et réessayer
+                console.warn(`⚠️ Rate limit segment ${segmentId}, retry dans 1s...`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+                return transcribeSegmentWithVoxtralOptimized(audioBlob, segmentId, originalMimeType, retryCount + 1);
+            } else {
+                console.warn(`⚠️ Erreur transcription segment ${segmentId}:`, response.status, response.statusText);
+                const errorText = await response.text();
+                console.warn('Détails erreur:', errorText);
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.warn(`⏰ Timeout segment ${segmentId}`);
+            } else if (retryCount < MAX_RETRIES) {
+                console.warn(`🔄 Retry segment ${segmentId} (${error.message})`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return transcribeSegmentWithVoxtralOptimized(audioBlob, segmentId, originalMimeType, retryCount + 1);
+            } else {
+                console.error(`❌ Échec définitif segment ${segmentId}:`, error.message);
+            }
+        }
+    };
+
+    // Fonction pour arrêter l'enregistrement Voxtral de manière propre
+    const stopVoxtralLiveTranscription = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            // Nettoyer l'interval des segments
+            if (mediaRecorderRef.current.segmentInterval) {
+                clearInterval(mediaRecorderRef.current.segmentInterval);
+                delete mediaRecorderRef.current.segmentInterval;
+            }
+            
+            // Arrêter l'enregistrement (déclenchera automatiquement onstop)
+            mediaRecorderRef.current.stop();
+            console.log('🛑 Arrêt demandé pour l\'enregistrement Voxtral optimisé');
+        }
+    };
+
+    // Système hybride : Web Speech API pour le temps réel + Voxtral pour la précision
+    const startHybridLiveTranscription = async () => {
+        // Vérifier la disponibilité de Web Speech API
+        const hasWebSpeech = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
+        
+        if (hasWebSpeech) {
+            // Démarrer la transcription en temps réel avec Web Speech API
+            startWebSpeechTranscription();
+        }
+        
+        // En parallèle, démarrer l'enregistrement Voxtral pour validation
+        await startVoxtralBackgroundRecording();
+    };
+
+    // Transcription instantanée avec Web Speech API
+    const startWebSpeechTranscription = () => {
+        try {
+            // @ts-ignore
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'fr-FR';
+
+            let finalTranscript = '';
+
+            recognition.onstart = () => {
+                console.log('🎤 Transcription temps réel démarrée (Web Speech)');
+                setIsLiveTranscribing(true);
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript + ' ';
+                    } else {
+                        interimTranscript = transcript;
+                    }
+                }
+
+                // Mise à jour en temps réel de l'input
+                const baseText = inputMessage.replace(/\[.*?\].*$/, '').trim();
+                let displayText = baseText + (baseText ? ' ' : '') + finalTranscript;
+                
+                if (interimTranscript) {
+                    displayText += `[En cours...] ${interimTranscript}`;
+                }
+                
+                setInputMessage(displayText);
+            };
+
+            recognition.onend = () => {
+                console.log('🎤 Transcription temps réel terminée');
+                setIsLiveTranscribing(false);
+                
+                // Nettoyer le texte final
+                const cleanedText = inputMessage.replace(/\[.*?\].*$/, '').trim();
+                setInputMessage(cleanedText);
+            };
+
+            recognition.onerror = (event) => {
+                console.error('❌ Erreur Web Speech:', event.error);
+                setIsLiveTranscribing(false);
+                
+                if (event.error === 'not-allowed') {
+                    console.warn('Permission refusée pour Web Speech, utilisation Voxtral uniquement');
+                }
+            };
+
+            recognition.start();
+            recognitionRef.current = recognition;
+            
+        } catch (error) {
+            console.error('Web Speech non disponible, utilisation Voxtral uniquement:', error);
+        }
+    };
+
+    // Enregistrement Voxtral en arrière-plan pour validation
+    const startVoxtralBackgroundRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    channelCount: 1,
+                    sampleRate: 16000,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+            
+            const supportedMimeTypes = [
+                'audio/wav',
+                'audio/mp4',
+                'audio/webm;codecs=opus',
+                'audio/webm'
+            ];
+            
+            let selectedMimeType = 'audio/webm';
+            for (const mimeType of supportedMimeTypes) {
+                if (MediaRecorder.isTypeSupported(mimeType)) {
+                    selectedMimeType = mimeType;
+                    break;
+                }
+            }
+
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: selectedMimeType,
+                audioBitsPerSecond: 64000
+            });
+
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
 
+            // Enregistrement complet pour validation finale avec Voxtral
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
                     audioChunksRef.current.push(event.data);
@@ -74,87 +564,113 @@ export default function ChatPage() {
             };
 
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-                await transcribeAudio(audioBlob);
+                console.log('🎤 Enregistrement Voxtral terminé, validation finale...');
+                
+                // Créer le fichier audio complet
+                const completeAudioBlob = new Blob(audioChunksRef.current, { type: selectedMimeType });
+                
+                if (completeAudioBlob.size > 8192) { // Vérifier qu'il y a assez d'audio
+                    try {
+                        // Valider avec Voxtral
+                        await validateWithVoxtral(completeAudioBlob, selectedMimeType);
+                    } catch (error) {
+                        console.warn('Validation Voxtral échouée, conservant Web Speech:', error);
+                    }
+                }
+                
+                setIsRecording(false);
+                setIsTranscribing(false);
                 
                 // Arrêter le stream
                 stream.getTracks().forEach(track => track.stop());
             };
 
+            mediaRecorder.onerror = (event) => {
+                console.error('❌ Erreur MediaRecorder:', event);
+                setIsRecording(false);
+                setIsTranscribing(false);
+                stream.getTracks().forEach(track => track.stop());
+            };
+
             mediaRecorder.start();
             setIsRecording(true);
-            console.log('Enregistrement démarré...');
+            setIsTranscribing(true);
+
+            console.log('📹 Enregistrement Voxtral de validation démarré');
             
         } catch (error) {
-            console.error('Erreur lors du démarrage de l\'enregistrement:', error);
-            alert('Erreur : Impossible d\'accéder au microphone. Vérifiez les permissions.');
-        }
-    };
-
-    // Fonction pour arrêter l'enregistrement
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
+            console.error('Erreur enregistrement Voxtral:', error);
+            if (error.name === 'NotAllowedError') {
+                alert('Permission microphone refusée. Veuillez autoriser l\'accès dans les paramètres de votre navigateur.');
+            }
             setIsRecording(false);
-            console.log('Enregistrement arrêté...');
+            setIsTranscribing(false);
         }
     };
 
-    // Fonction pour transcription avec Voxtral
-    const transcribeAudio = async (audioBlob: Blob) => {
-        setIsTranscribing(true);
-        
+    // Validation finale avec Voxtral
+    const validateWithVoxtral = async (audioBlob: Blob, mimeType: string) => {
         try {
-            console.log("=== DEBUG CLIENT TRANSCRIPTION ===");
-            console.log("Taille audio blob:", audioBlob.size, "bytes");
-            console.log("Type audio blob:", audioBlob.type);
+            console.log('🔍 Validation finale avec Voxtral...');
             
-            const formData = new FormData();
-            formData.append('audio', audioBlob, 'recording.wav');
+            let processedBlob = audioBlob;
+            
+            if (mimeType.includes('webm')) {
+                processedBlob = await convertWebMToWav(audioBlob);
+            }
 
-            console.log('Envoi vers Voxtral pour transcription...');
-            
+            const formData = new FormData();
+            formData.append('audio', processedBlob, 'validation.wav');
+
             const response = await fetch('/api/voxtral', {
                 method: 'POST',
                 body: formData
             });
 
-            console.log('Réponse API:', response.status, response.statusText);
-            
             if (response.ok) {
                 const result = await response.json();
-                console.log('Transcription reçue:', result);
                 
                 if (result.text && result.text.trim()) {
-                    setInputMessage(prev => prev + (prev ? ' ' : '') + result.text);
-                    console.log('Texte ajouté à l\'input:', result.text);
-                } else {
-                    console.error('Texte de transcription vide');
-                    alert('La transcription n\'a pas donné de résultat textuel');
+                    console.log('✅ Validation Voxtral:', result.text);
+                    
+                    // Remplacer le texte par la version Voxtral si très différente
+                    const currentText = inputMessage.replace(/\[.*?\].*$/, '').trim();
+                    const voxtralText = result.text.trim();
+                    
+                    // Si Voxtral donne un résultat significativement différent, proposer de l'utiliser
+                    if (voxtralText.length > currentText.length * 1.2 || voxtralText.length < currentText.length * 0.8) {
+                        console.log('📝 Différence significative détectée, suggestion Voxtral');
+                        // Optionnel : on peut ajouter une logique pour proposer le texte Voxtral
+                    }
                 }
-                
-            } else {
-                const errorData = await response.json().catch(async () => {
-                    const text = await response.text();
-                    return { error: 'Erreur de parsing JSON', details: text };
-                });
-                console.error('Erreur détaillée de transcription:', errorData);
-                alert(`Erreur de transcription: ${errorData.error} - ${errorData.details || ''}`);
             }
         } catch (error) {
-            console.error('Erreur transcription complète:', error);
-            alert(`Erreur lors de la transcription: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
-        } finally {
-            setIsTranscribing(false);
+            console.warn('Validation Voxtral échouée:', error);
         }
+    };
+
+    // Arrêter la transcription hybride
+    const stopHybridLiveTranscription = () => {
+        // Arrêter Web Speech API
+        if (recognitionRef.current) {
+            recognitionRef.current.stop();
+            recognitionRef.current = null;
+        }
+        
+        // Arrêter l'enregistrement Voxtral
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+        }
+        
+        setIsLiveTranscribing(false);
     };
 
     // Fonction pour gérer le clic sur le bouton microphone
     const handleMicClick = () => {
         if (isRecording) {
-            stopRecording();
+            stopHybridLiveTranscription();
         } else {
-            startRecording();
+            startHybridLiveTranscription();
         }
     };
 
@@ -170,13 +686,27 @@ export default function ChatPage() {
             // Arrêter toute synthèse en cours
             speechSynthesis.cancel();
 
-            // Nettoyer le contenu HTML pour ne garder que le texte
-            const textContent = messageContent
-                .replace(/<[^>]*>/g, '') // Supprimer les balises HTML
-                .replace(/&nbsp;/g, ' ') // Remplacer les espaces insécables
-                .replace(/&amp;/g, '&') // Décoder les entités HTML
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
+            // Créer un élément temporaire pour parser le HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = messageContent;
+            
+            // Récupérer spécifiquement le contenu des éléments avec la classe "leading-relaxed"
+            const leadingRelaxedElements = tempDiv.querySelectorAll('.leading-relaxed');
+            
+            let textContent = '';
+            if (leadingRelaxedElements.length > 0) {
+                // Extraire le texte de tous les éléments leading-relaxed
+                leadingRelaxedElements.forEach(element => {
+                    textContent += element.textContent || '';
+                });
+            } else {
+                // Fallback : utiliser tout le contenu si pas d'élément leading-relaxed trouvé
+                textContent = tempDiv.textContent || '';
+            }
+            
+            // Nettoyer le texte
+            textContent = textContent
+                .replace(/\s+/g, ' ') // Remplacer les espaces multiples par un seul
                 .trim();
 
             if (!textContent || textContent.length === 0) {
@@ -453,11 +983,12 @@ export default function ChatPage() {
                     <CardFooter className="p-0 bg-transparent border-0">
                         <form onSubmit={handleSubmit} className="w-full">
                             <div className="flex gap-2 items-end bg-gray-50 rounded-3xl p-2 border-2 border-gray-200 focus-within:border-[#43bb8c] transition-colors">
-                                <Input
+                                <textarea
+                                    ref={textareaRef}
                                     value={inputMessage}
                                     onChange={(e) => setInputMessage(e.target.value)}
                                     placeholder="Tapez votre message ici..."
-                                    className="flex-1 min-h-[44px] bg-transparent border-none focus:ring-0 focus:outline-none text-gray-800"
+                                    className="flex-1 min-h-[44px] bg-transparent border-none focus:ring-0 focus:outline-none text-gray-800 resize-none"
                                 />
                                 <Button
                                     type="submit"
@@ -484,3 +1015,4 @@ export default function ChatPage() {
         </div>
     );
 }
+
