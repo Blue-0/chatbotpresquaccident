@@ -36,50 +36,67 @@ export async function POST(request: NextRequest) {
             }, { status: 401 });
         }
         
-        // Validation du fichier selon les spécifications Mistral AI
-        const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB max
-        const SUPPORTED_FORMATS = ['audio/wav', 'audio/mp3', 'audio/flac', 'audio/m4a', 'audio/ogg'];
+        // Validation du fichier selon la documentation Mistral AI
+        // Doc: Max ~15 minutes pour transcription
+        // Formats supportés: WAV, MP3, FLAC, M4A, OGG, WebM
+        const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB max (estimation pour ~15min audio)
+        const SUPPORTED_FORMATS = [
+            'audio/wav', 'audio/wave', 'audio/x-wav',
+            'audio/mp3', 'audio/mpeg',
+            'audio/flac',
+            'audio/m4a', 'audio/mp4',
+            'audio/ogg',
+            'audio/webm'
+        ];
         
         if (audioFile.size > MAX_FILE_SIZE) {
             return NextResponse.json({ 
                 error: "Fichier trop volumineux",
-                details: `Taille max: 25MB, reçu: ${Math.round(audioFile.size / 1024 / 1024)}MB`
+                details: `Taille max: 25MB (~15min audio), reçu: ${Math.round(audioFile.size / 1024 / 1024)}MB`
             }, { status: 400 });
         }
 
-        // Vérifier le format (accepter WAV même si converti)
-        if (!SUPPORTED_FORMATS.includes(audioFile.type) && !audioFile.name.endsWith('.wav')) {
+        // Vérifier le format (être permissif sur les types MIME car conversion côté client)
+        const isValidFormat = SUPPORTED_FORMATS.includes(audioFile.type) || 
+                             audioFile.name.match(/\.(wav|mp3|flac|m4a|ogg|webm)$/i);
+        
+        if (!isValidFormat) {
             return NextResponse.json({ 
-                error: "Format non supporté",
-                details: `Formats acceptés: ${SUPPORTED_FORMATS.join(', ')}, WAV`,
+                error: "Format audio non supporté",
+                details: `Formats acceptés: WAV, MP3, FLAC, M4A, OGG, WebM`,
                 received: audioFile.type
             }, { status: 400 });
         }
         
-        // Créer un FormData selon la documentation Mistral AI (paramètres corrects)
+        // Créer un FormData selon la documentation officielle Mistral AI
+        // Doc: https://docs.mistral.ai/api/#tag/audio.transcriptions
         const mistralFormData = new FormData();
         mistralFormData.append('file', audioFile, audioFile.name);
         mistralFormData.append('model', 'voxtral-mini-latest');
-        mistralFormData.append('language', 'fr');
-        mistralFormData.append('response_format', 'json');
-        // Supprimer temperature et prompt (non supportés par l'API audio de Mistral)
+        mistralFormData.append('language', 'fr'); // Optionnel mais améliore la précision
+        // Note: response_format non documenté dans l'API, retiré
         
         console.log("Tentative de transcription avec Voxtral...");
         console.log("Paramètres optimisés:", {
             model: 'voxtral-mini-latest',
             language: 'fr',
             fileSize: audioFile.size + ' bytes',
-            mimeType: audioFile.type
+            mimeType: audioFile.type,
+            fileName: audioFile.name
         });
         
         try {
             const endpoint = '/v1/audio/transcriptions';
             console.log(`Appel API Mistral: ${baseUrl}${endpoint}`);
             
+            // En-têtes selon la documentation officielle
+            // La doc montre: --header "x-api-key: $MISTRAL_API_KEY"
+            // Mais aussi: --header "Authorization: Bearer $MISTRAL_API_KEY"
             const response = await fetch(`${baseUrl}${endpoint}`, {
                 method: "POST",
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
+                    // Note: pas de Content-Type, laissé automatique pour multipart/form-data
                 },
                 body: mistralFormData,
             });
@@ -87,11 +104,18 @@ export async function POST(request: NextRequest) {
             console.log(`Réponse Mistral:`, response.status, response.statusText);
             
             if (response.ok) {
+                // Format de réponse selon la documentation Mistral AI:
+                // {
+                //   "model": "string",
+                //   "text": "string",
+                //   "language": "string",
+                //   "segments": [...],  // si timestamp_granularities demandé
+                //   "usage": {...}
+                // }
                 const result = await response.json();
                 console.log("Résultat transcription Mistral:", result);
                 
-                // Format de réponse selon Mistral AI (similaire à OpenAI)
-                const transcribedText = result.text || result.transcript || '';
+                const transcribedText = result.text || '';
                 
                 if (!transcribedText || transcribedText.trim().length === 0) {
                     console.log("Réponse Mistral reçue mais texte vide:", result);
@@ -101,13 +125,14 @@ export async function POST(request: NextRequest) {
                     }, { status: 400 });
                 }
                 
-                console.log("Transcription Voxtral réussie:", transcribedText);
+                console.log("✅ Transcription Voxtral réussie:", transcribedText);
                 return NextResponse.json({ 
                     text: transcribedText.trim(),
-                    confidence: result.confidence || 1.0,
                     language: result.language || 'fr',
+                    model_used: result.model || 'voxtral-mini-latest',
                     duration: result.duration,
-                    model_used: 'voxtral-mini-latest',
+                    segments: result.segments, // disponible si timestamp_granularities=segment
+                    usage: result.usage, // token usage info
                     endpoint_used: "mistral-ai"
                 });
             } else {
