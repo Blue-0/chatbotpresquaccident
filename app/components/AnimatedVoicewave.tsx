@@ -59,12 +59,12 @@ export function AnimatedVoicewave({
   return (
     <div
       ref={wrapperRef}
-      className="flex flex-col items-center gap-4"
+      className="flex flex-row items-center gap-4"
     >
       {/* Bouton Stop intégré en haut */}
       <Button
         type="button"
-        variant="destructive"
+        variant="outline"
         size="sm"
         onClick={onStop}
         className="gap-2 shadow-lg mb-2"
@@ -88,17 +88,7 @@ export function AnimatedVoicewave({
         sensitivity={sensitivity}
       />
 
-      {/* Bouton Stop en bas (double) */}
-      <Button
-        type="button"
-        variant="destructive"
-        size="lg"
-        onClick={onStop}
-        className="gap-2 shadow-lg"
-      >
-        <Square className="size-4 fill-current" />
-        Arrêter l'enregistrement
-      </Button>
+
     </div>
   );
 }

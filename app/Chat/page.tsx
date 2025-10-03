@@ -10,6 +10,7 @@ import {
     resetScale,
 } from '@/src/lib/animations';
 import { Card, CardContent, CardFooter } from '@/src/components/ui/card';
+import { Button } from '@/src/components/ui/button';
 import { useSessionId } from '@/app/hooks/useSessionId';
 import { useAudioRecording } from '@/app/hooks/useAudioRecording';
 import { useTextToSpeech } from '@/app/hooks/useTextToSpeech';
@@ -19,6 +20,7 @@ import { ChatMessage } from '@/app/components/ChatMessage';
 import { ChatInput } from '@/app/components/ChatInput';
 import { LoadingScreen } from '@/app/components/LoadingScreen';
 import { AnimatedVoicewave } from '@/app/components/AnimatedVoicewave';
+import Voicewave from '@/app/components/Voicewave';
 import { transcribeAudio } from '@/app/services/transcriptionService';
 import {
     type Message,
@@ -192,43 +194,72 @@ export default function ChatPage() {
                     </CardContent>
                 </Card>
 
-                {/* Input Area */}
+                {/* Input Area - Barre unifiée */}
                 <Card className="bg-transparent shadow-none border-0">
                     <CardFooter className="p-0 bg-transparent border-0">
-                        <div className="w-full relative">
-                            {/* Voicewave Overlay - Remplace l'input pendant l'enregistrement */}
-                            {isRecording && (
-                                <div className="absolute inset-0 flex items-center justify-center z-20 bg-white/95 rounded-lg border border-gray-200 p-4">
-                                    <AnimatedVoicewave
-                                        isRecording={isRecording}
-                                        audioStream={audioStream}
-                                        onStop={handleStopRecording}
-                                        width={320}
-                                        height={70}
-                                        barColor="#43bb8c"
-                                        barCount={45}
-                                        barGap={2}
-                                        barRadius={3}
-                                        style="rounded"
-                                        barMinHeight={2}
-                                        barMaxHeight={0.9}
-                                        sensitivity={2}
-                                        
-                                    />
-                                </div>
-                            )}
+                        <div className="w-full">
+                            {/* Barre d'input unifiée qui change d'état */}
+                            <div className="flex gap-2 items-center bg-gray-50 rounded-3xl p-2 border-2 border-gray-200 focus-within:border-[#43bb8c] transition-colors">
+                                
+                                {/* État normal : textarea + bouton envoi */}
+                                {!isRecording && (
+                                    <>
+                                        <textarea
+                                            value={inputMessage}
+                                            onChange={(e) => setInputMessage(e.target.value)}
+                                            placeholder="Tapez votre message ici..."
+                                            className="flex-1 min-h-[44px] bg-transparent border-none focus:ring-0 focus:outline-none text-gray-800 resize-none"
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    if (inputMessage.trim()) {
+                                                        handleSubmit(e);
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                        <Button
+                                            type="button"
+                                            disabled={!inputMessage.trim()}
+                                            onClick={handleSubmit}
+                                            className="bg-[#43bb8c] hover:bg-[#3aa078] disabled:bg-gray-400 text-white px-4 py-2 h-[44px] rounded-full transition-colors"
+                                        >
+                                            ⬆️
+                                        </Button>
+                                    </>
+                                )}
 
-                            {/* Input - Visible uniquement quand pas d'enregistrement */}
-                            {!isRecording && (
-                                <ChatInput
-                                    value={inputMessage}
-                                    onChange={setInputMessage}
-                                    onSubmit={handleSubmit}
-                                    isRecording={isRecording}
-                                    onMicClick={handleMicClick}
-                                    micRef={micRef}
-                                />
-                            )}
+                                {/* État enregistrement : Voicewave au centre */}
+                                {isRecording && (
+                                    <div className="flex-1 flex items-center justify-center">
+                                        <Voicewave
+                                            audioStream={audioStream}
+                                            isRecording={isRecording}
+                                            width={300}
+                                            height={40}
+                                            barColor="#43bb8c"
+                                            barCount={30}
+                                            barGap={3}
+                                            barRadius={2}
+                                            style="rounded"
+                                            barMinHeight={4}
+                                            barMaxHeight={0.8}
+                                            sensitivity={2}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Bouton microphone toujours visible à droite */}
+                                <Button
+                                    ref={micRef}
+                                    type="button"
+                                    variant="outline"
+                                    className="border-[#43bb8c] text-[#43bb8c] hover:bg-[#43bb8c] hover:text-white transition-colors px-4 py-2 h-[44px] rounded-full"
+                                    onClick={handleMicClick}
+                                >
+                                    {isRecording ? '⏹️' : '🎤'}
+                                </Button>
+                            </div>
                         </div>
                     </CardFooter>
                 </Card>
