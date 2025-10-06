@@ -23,11 +23,11 @@ interface VoicewaveProps {
 export const Voicewave: React.FC<VoicewaveProps> = ({
     isRecording = false,
     audioStream = null,
-    width = 300,
+    width = 100,
     height = 60,
     barColor = '#43bb8c',
     barCount = 40,
-    barWidth,
+    barWidth, // Pas de valeur par défaut - sera calculé si non fourni
     barGap = 2,
     barRadius = 2,
     barMinHeight = 4,
@@ -42,8 +42,15 @@ export const Voicewave: React.FC<VoicewaveProps> = ({
     const analyserRef = useRef<AnalyserNode | undefined>(undefined);
     const dataArrayRef = useRef<Uint8Array | undefined>(undefined);
 
-    // Calculer la largeur de barre automatiquement si non spécifiée
-    const calculatedBarWidth = barWidth || (width / barCount) - barGap;
+    // Calculer la largeur de barre de manière propre et responsive
+    const calculatedBarWidth = React.useMemo(() => {
+        // Si barWidth est explicitement fourni, l'utiliser
+        if (barWidth && barWidth > 0) {
+            return barWidth;
+        }
+        // Sinon, calculer automatiquement pour s'adapter à l'espace disponible
+        return Math.max(2, (width - (barCount - 1) * barGap) / barCount);
+    }, [barWidth, width, barCount, barGap]);
 
     useEffect(() => {
         if (!isRecording || !audioStream) {

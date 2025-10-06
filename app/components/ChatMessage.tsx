@@ -29,7 +29,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       ref={isLast ? messageRef : undefined}
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
     >
-      <div className="relative group max-w-[80%]">
+      <div className="relative group max-w-[90%]">
         <div
           className={`p-4 rounded-2xl ${
             isUser
