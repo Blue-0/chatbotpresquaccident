@@ -16,7 +16,6 @@ interface ChatHeaderProps {
 }
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
-  userEmail,
   onSignOut,
   headerRef,
 }) => {
@@ -39,7 +38,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           </div>
         </div>
         <CardContent className="text-gray-600 text-sm sm:hidden block p-0">
-          Assistant IA - {userEmail}
+              Assistant IA pour vos questions de sécurité
         </CardContent>
       </CardHeader>
     </Card>

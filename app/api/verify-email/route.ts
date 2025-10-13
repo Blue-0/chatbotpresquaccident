@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Airtable from 'airtable';
+import { z } from 'zod';
+
+// Schéma de validation
+const emailSchema = z.object({
+    email: z.string().email().max(255)
+});
 
 export async function POST(request: NextRequest) {
     try {
@@ -14,11 +20,18 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Configuration manquante' }, { status: 500 });
         }
 
-        const { email } = await request.json();
+        const body = await request.json();
         
-        if (!email) {
-            return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+        // ✅ Valider avec Zod
+        const validation = emailSchema.safeParse(body);
+        
+        if (!validation.success) {
+            return NextResponse.json({ 
+                error: 'Email invalide' 
+            }, { status: 400 });
         }
+
+        const { email } = validation.data;
 
         // Configuration Airtable
         const base = new Airtable({
@@ -31,8 +44,11 @@ export async function POST(request: NextRequest) {
 
         console.log(`Recherche de l'email: ${email} dans la table: ${tableName}`);
 
+        // ✅ Échapper les caractères spéciaux pour Airtable
+        const sanitizedEmail = email.replace(/"/g, '\\"');
+        
         const records = await table.select({
-            filterByFormula: `{mail} = "${email}"`,
+            filterByFormula: `{mail} = "${sanitizedEmail}"`,
             maxRecords: 1
         }).firstPage();
 
@@ -42,10 +58,9 @@ export async function POST(request: NextRequest) {
         
         return NextResponse.json({ exists: emailExists });
     } catch (error) {
-        console.error('Erreur détaillée lors de la vérification email:', error);
+        console.error('Erreur vérification email:', error);
         return NextResponse.json({ 
-            error: 'Internal server error', 
-            details: error instanceof Error ? error.message : 'Erreur inconnue'
+            error: 'Erreur serveur' 
         }, { status: 500 });
     }
 }

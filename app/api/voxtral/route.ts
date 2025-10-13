@@ -2,11 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
     try {
+        // ✅ Toujours valider la clé API
+        const apiKey = process.env.MISTRAL_API_KEY;
+        
+        if (!apiKey) {
+            console.error('MISTRAL_API_KEY manquante');
+            return NextResponse.json({ 
+                error: "Service temporairement indisponible"
+            }, { status: 503 });
+        }
+
         const formData = await request.formData();
         const audioFile = formData.get('audio') as File;
         
         if (!audioFile) {
-            return NextResponse.json({ error: "Fichier audio requis" }, { status: 400 });
+            return NextResponse.json({ 
+                error: "Fichier audio requis" 
+            }, { status: 400 });
         }
 
         console.log("=== DEBUG VOXTRAL (MISTRAL AI) ===");
@@ -15,26 +27,9 @@ export async function POST(request: NextRequest) {
         console.log("Nom du fichier:", audioFile.name);
 
         // Configuration selon la documentation Mistral AI
-        const apiKey = process.env.MISTRAL_API_KEY;
         const baseUrl = process.env.VOXTRAL_BASE_URL || "https://api.mistral.ai";
         
         console.log("URL Mistral configurée:", baseUrl);
-        
-        if (!apiKey) {
-            console.error("MISTRAL_API_KEY manquante");
-            // Fallback en mode développement
-            if (process.env.NODE_ENV === 'development') {
-                return NextResponse.json({ 
-                    text: "Transcription de test - Clé API Mistral manquante",
-                    confidence: 0.5,
-                    endpoint_used: "fallback"
-                });
-            }
-            return NextResponse.json({ 
-                error: "Clé API Mistral requise",
-                suggestion: "Configurez MISTRAL_API_KEY dans vos variables d'environnement"
-            }, { status: 401 });
-        }
         
         // Validation du fichier selon la documentation Mistral AI
         // Doc: Max ~15 minutes pour transcription
@@ -173,11 +168,10 @@ export async function POST(request: NextRequest) {
             }, { status: 503 });
         }
     } catch (error) {
-        console.error("Erreur transcription complète:", error);
-        console.error("Stack:", error instanceof Error ? error.stack : 'No stack');
+        // ❌ Ne jamais exposer les détails d'erreur
+        console.error('Erreur transcription:', error);
         return NextResponse.json({ 
-            error: "Erreur serveur transcription", 
-            details: error instanceof Error ? error.message : "Erreur inconnue" 
+            error: "Erreur lors de la transcription"
         }, { status: 500 });
     }
 }
