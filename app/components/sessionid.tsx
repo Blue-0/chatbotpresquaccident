@@ -1,30 +1,25 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { buttonVariants } from "@/src/components/ui/button";
 import dynamic from "next/dynamic";
+import { useSessionId } from "@/app/hooks/useSessionId";
 
 const SessionIdComponent = () => {
-  const [sessionId, setSessionId] = useState<string>("");
-  const [mounted, setMounted] = useState(false);
+  const { sessionId, isLoaded } = useSessionId();
 
-  useEffect(() => {
-    setMounted(true);
-    // Générer ou récupérer l'ID de session côté client uniquement
-    let id = localStorage.getItem("sessionId");
-    if (!id) {
-      id = Math.random().toString(36).substring(2, 15);
-      localStorage.setItem("sessionId", id);
-    }
-    setSessionId(id);
-  }, []);
-
-  if (!mounted) {
+  if (!isLoaded) {
     return <div className={buttonVariants({ size: "lg", variant: "outline"  })}>Loading...</div>;
   }
 
+  // Tronquer à 11 caractères + "..." pour l'affichage
+  const displaySessionId = sessionId ? `${sessionId.substring(0, 11)}...` : "Loading...";
+
   return (
-    <div className={buttonVariants({ size: "lg", variant: "outline" })}>
-      {sessionId || "Loading..."}
+    <div
+      className={buttonVariants({ size: "lg", variant: "outline" })}
+      title={sessionId} // Afficher le sessionId complet au survol
+    >
+      {displaySessionId}
     </div>
   );
 };
