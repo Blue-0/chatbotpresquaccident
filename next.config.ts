@@ -9,11 +9,21 @@ const nextConfig = {
 
   reactStrictMode: true,
 
+  // ✅ Génère un Build ID unique à chaque déploiement pour invalider le cache
+  generateBuildId: async () => {
+    return `build-${Date.now()}`;
+  },
+
   async headers() {
     return [
       {
         source: '/(.*)',
         headers: [
+          // ✅ Cache-Control pour forcer la revalidation des pages HTML
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, must-revalidate, max-age=0',
+          },
           {
             key: 'X-Robots-Tag',
             value: 'noindex, nofollow',

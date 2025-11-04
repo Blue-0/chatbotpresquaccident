@@ -34,6 +34,12 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="fr">
+        <head>
+            {/* Meta tags pour empêcher le cache navigateur */}
+            <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+            <meta httpEquiv="Pragma" content="no-cache" />
+            <meta httpEquiv="Expires" content="0" />
+        </head>
         <body
             className={`${raleway.variable} ${poppins.variable} px-4`}
         >
