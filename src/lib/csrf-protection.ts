@@ -27,6 +27,14 @@ export function validateOrigin(request: NextRequest): NextResponse | null {
   const nextAuthUrl = process.env.NEXTAUTH_URL;
   const allowedOrigins = nextAuthUrl ? [nextAuthUrl] : [];
 
+  // Toujours ajouter le domaine actuel (basé sur le header host)
+  if (host) {
+    allowedOrigins.push(
+      `https://${host}`,
+      `http://${host}`
+    );
+  }
+
   // Add localhost variants for development
   if (process.env.NODE_ENV === 'development') {
     // Détecter le port actuel depuis le header host
