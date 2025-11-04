@@ -20,6 +20,7 @@ export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
 
   const response = await fetch('/api/voxtral', {
     method: 'POST',
+    credentials: 'include', // ✅ Inclure les cookies de session pour l'authentification JWT
     body: formData,
   });
 

@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getToken } from 'next-auth/jwt';
+import { validateOrigin } from '@/src/lib/csrf-protection';
 
 export async function POST(request: NextRequest) {
     try {
+        // ✅ Protection CSRF - Valider l'origine
+        const csrfError = validateOrigin(request);
+        if (csrfError) {
+            return csrfError;
+        }
+
+        // ✅ Vérifier l'authentification
+        const token = await getToken({
+            req: request,
+            secret: process.env.NEXTAUTH_SECRET
+        });
+
+        if (!token) {
+            return NextResponse.json(
+                { error: 'Non autorisé - Authentification requise' },
+                { status: 401 }
+            );
+        }
+
         // ✅ Toujours valider la clé API
         const apiKey = process.env.MISTRAL_API_KEY;
         

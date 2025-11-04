@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Airtable from 'airtable';
 import { z } from 'zod';
+import { createEmailFilterFormula } from '@/src/lib/airtable-utils';
+import { validateOrigin } from '@/src/lib/csrf-protection';
 
 // Schéma de validation
 const emailSchema = z.object({
@@ -9,6 +11,12 @@ const emailSchema = z.object({
 
 export async function POST(request: NextRequest) {
     try {
+        // ✅ Protection CSRF - Valider l'origine
+        const csrfError = validateOrigin(request);
+        if (csrfError) {
+            return csrfError;
+        }
+
         // Vérifier les variables d'environnement
         if (!process.env.AIRTABLE_API_KEY) {
             console.error('AIRTABLE_API_KEY manquante');
@@ -44,11 +52,11 @@ export async function POST(request: NextRequest) {
 
         console.log(`Recherche de l'email: ${email} dans la table: ${tableName}`);
 
-        // ✅ Échapper les caractères spéciaux pour Airtable
-        const sanitizedEmail = email.replace(/"/g, '\\"');
-        
+        // ✅ Utiliser la fonction sécurisée pour créer le filtre
+        const filterFormula = createEmailFilterFormula(email);
+
         const records = await table.select({
-            filterByFormula: `{mail} = "${sanitizedEmail}"`,
+            filterByFormula: filterFormula,
             maxRecords: 1
         }).firstPage();
 

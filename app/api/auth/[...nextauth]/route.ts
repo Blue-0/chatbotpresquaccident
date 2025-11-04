@@ -1,6 +1,7 @@
 import NextAuth, { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import Airtable from 'airtable'
+import { createEmailFilterFormula } from '@/src/lib/airtable-utils'
 
 const authOptions: NextAuthOptions = {
     secret: process.env.NEXTAUTH_SECRET,
@@ -25,9 +26,10 @@ const authOptions: NextAuthOptions = {
                     const tableName = process.env.AIRTABLE_TABLE_ID || 'Users'
                     const table = base(tableName)
 
-                    // Vérifier si l'email existe dans Airtable
+                    // Vérifier si l'email existe dans Airtable (avec formule sécurisée)
+                    const filterFormula = createEmailFilterFormula(credentials.email)
                     const records = await table.select({
-                        filterByFormula: `{mail} = "${credentials.email}"`,
+                        filterByFormula: filterFormula,
                         maxRecords: 1
                     }).firstPage()
 

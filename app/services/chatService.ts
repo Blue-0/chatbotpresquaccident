@@ -1,4 +1,5 @@
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 export interface Message {
   id: string;
@@ -17,6 +18,25 @@ const transformContent = (content: string): string => {
     /<em>(.*?)<\/em>/g,
     '<span style="font-weight: bold; color: #F28C06;">$1</span>'
   );
+};
+
+/**
+ * Sanitizes HTML content to prevent XSS attacks
+ * @param content - Raw HTML content
+ * @returns Sanitized HTML safe for rendering
+ */
+const sanitizeHTML = (content: string): string => {
+  if (typeof window === 'undefined') {
+    // Server-side: return as-is (will be sanitized client-side)
+    return content;
+  }
+
+  // Client-side: sanitize with DOMPurify
+  return DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'span', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'a', 'code', 'pre'],
+    ALLOWED_ATTR: ['style', 'href', 'target', 'rel'],
+    ALLOW_DATA_ATTR: false,
+  });
 };
 
 const createAIMessages = (parsedContent: string): Message[] => {
@@ -41,6 +61,7 @@ export const sendMessage = async ({
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include', // ✅ Inclure les cookies de session pour l'authentification JWT
     body: JSON.stringify({
       message,
       sessionId,
@@ -56,8 +77,9 @@ export const sendMessage = async ({
   const parsedContent =
     (await marked.parse(data.response)) || 'Réponse reçue du webhook';
   const transformedContent = transformContent(parsedContent);
+  const sanitizedContent = sanitizeHTML(transformedContent);
 
-  return createAIMessages(transformedContent);
+  return createAIMessages(sanitizedContent);
 };
 
 export const createUserMessage = (content: string): Message => ({
