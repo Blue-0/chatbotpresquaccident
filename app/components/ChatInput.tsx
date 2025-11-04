@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { Button } from '@/src/components/ui/button';
+import { Mic, Square, ArrowUp } from 'lucide-react';
 
 interface ChatInputProps {
   value: string;
@@ -46,7 +47,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           disabled={!value.trim()}
           className="bg-[#43bb8c] hover:bg-[#3aa078] disabled:bg-gray-400 text-white px-4 py-2 h-[44px] rounded-full transition-colors"
         >
-          ⬆️
+          <ArrowUp size={20} strokeWidth={3} />
         </Button>
         <Button
           ref={micRef}
@@ -55,7 +56,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           className="border-[#43bb8c] text-[#43bb8c] hover:bg-[#43bb8c] hover:text-white transition-colors px-4 py-2 h-[44px] rounded-full"
           onClick={onMicClick}
         >
-          {isRecording ? '⏹️' : '🎤'}
+          {isRecording ? <Square size={20} strokeWidth={3} /> : <Mic size={20} strokeWidth={3} />}
         </Button>
       </div>
     </form>

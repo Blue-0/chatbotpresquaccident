@@ -11,6 +11,7 @@ import {
 } from '@/src/lib/animations';
 import { Card, CardContent, CardFooter } from '@/src/components/ui/card';
 import { Button } from '@/src/components/ui/button';
+import { Mic, Square, ArrowUp } from 'lucide-react';
 import { useSessionId } from '@/app/hooks/useSessionId';
 import { useAudioRecording } from '@/app/hooks/useAudioRecording';
 import { useTextToSpeech } from '@/app/hooks/useTextToSpeech';
@@ -230,7 +231,7 @@ export default function ChatPage() {
                                             onClick={handleSubmit}
                                             className="bg-[#43bb8c] hover:bg-[#3aa078] disabled:bg-gray-400 text-white px-3 sm:px-4 py-2 h-[44px] rounded-full transition-colors flex-shrink-0"
                                         >
-                                            ⬆️
+                                            <ArrowUp size={20} strokeWidth={2} />
                                         </Button>
                                     </>
                                 )}
@@ -264,7 +265,7 @@ export default function ChatPage() {
                                     className="border-[#43bb8c] text-[#43bb8c] hover:bg-[#43bb8c] hover:text-white transition-colors px-3 sm:px-4 py-2 h-[44px] rounded-full flex-shrink-0"
                                     onClick={handleMicClick}
                                 >
-                                    {isRecording ? '⏹️' : '🎤'}
+                                    {isRecording ? <Square size={20} strokeWidth={1.75} /> : <Mic size={20} strokeWidth={1.75} />}
                                 </Button>
                             </div>
                         </div>
