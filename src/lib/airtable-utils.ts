@@ -38,3 +38,23 @@ export function createEmailFilterFormula(
   const escapedEmail = escapeAirtableFormula(email.toLowerCase().trim());
   return `LOWER({${fieldName}}) = "${escapedEmail}"`;
 }
+
+/**
+ * Creates a safe Airtable filter formula for identifier or email matching
+ * Searches in both 'username' and 'mail' fields with case-insensitive comparison
+ *
+ * @param identifier - The identifier or email to search for
+ * @param usernameField - The username field name in Airtable (default: 'username')
+ * @param emailField - The email field name in Airtable (default: 'mail')
+ * @returns Safe filter formula string
+ */
+export function createIdentifierFilterFormula(
+  identifier: string,
+  usernameField: string = 'username',
+  emailField: string = 'mail'
+): string {
+  const escapedIdentifier = escapeAirtableFormula(identifier.toLowerCase().trim());
+
+  // Recherche dans le champ username OU mail (insensible à la casse)
+  return `OR(LOWER({${usernameField}}) = "${escapedIdentifier}", LOWER({${emailField}}) = "${escapedIdentifier}")`;
+}

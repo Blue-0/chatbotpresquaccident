@@ -1,21 +1,21 @@
 import NextAuth, { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import Airtable from 'airtable'
-import { createEmailFilterFormula } from '@/src/lib/airtable-utils'
+import { createIdentifierFilterFormula } from '@/src/lib/airtable-utils'
 
 const authOptions: NextAuthOptions = {
     secret: process.env.NEXTAUTH_SECRET,
     providers: [
         CredentialsProvider({
             id: 'credentials',
-            name: 'Email Verification',
+            name: 'Email or Username Verification',
             credentials: {
-                email: { label: 'Email', type: 'email', placeholder: 'votre@email.com' }
+                email: { label: 'Email ou Identifiant', type: 'text', placeholder: 'votre@email.com ou identifiant' }
             },
             async authorize(credentials) {
                 try {
                     if (!credentials?.email) {
-                        throw new Error('Email requis')
+                        throw new Error('Identifiant requis')
                     }
 
                     // Configuration Airtable
@@ -26,23 +26,24 @@ const authOptions: NextAuthOptions = {
                     const tableName = process.env.AIRTABLE_TABLE_ID || 'Users'
                     const table = base(tableName)
 
-                    // Vérifier si l'email existe dans Airtable (avec formule sécurisée)
-                    const filterFormula = createEmailFilterFormula(credentials.email)
+                    // Vérifier si l'identifiant existe dans Airtable (username OU mail)
+                    const filterFormula = createIdentifierFilterFormula(credentials.email)
                     const records = await table.select({
                         filterByFormula: filterFormula,
                         maxRecords: 1
                     }).firstPage()
 
                     if (records.length > 0) {
+                        const userEmail = records[0].fields.mail as string || credentials.email
                         const user = {
                             id: records[0].id,
-                            email: credentials.email,
-                            name: records[0].fields.name as string || credentials.email
+                            email: userEmail,
+                            name: records[0].fields.name as string || userEmail
                         }
                         return user
                     }
 
-                    throw new Error('Email non autorisé')
+                    throw new Error('Identifiant non autorisé')
                 } catch (error) {
                     console.error('Erreur Airtable:', error)
                     return null

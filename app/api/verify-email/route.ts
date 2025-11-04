@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Airtable from 'airtable';
 import { z } from 'zod';
-import { createEmailFilterFormula } from '@/src/lib/airtable-utils';
+import { createIdentifierFilterFormula } from '@/src/lib/airtable-utils';
 import { validateOrigin } from '@/src/lib/csrf-protection';
 
-// Schéma de validation
-const emailSchema = z.object({
-    email: z.string().email().max(255)
+// Schéma de validation - Accepte email OU identifiant simple
+const identifierSchema = z.object({
+    email: z.string().min(1).max(255).trim()
 });
 
 export async function POST(request: NextRequest) {
@@ -29,17 +29,17 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        
+
         // ✅ Valider avec Zod
-        const validation = emailSchema.safeParse(body);
-        
+        const validation = identifierSchema.safeParse(body);
+
         if (!validation.success) {
-            return NextResponse.json({ 
-                error: 'Email invalide' 
+            return NextResponse.json({
+                error: 'Identifiant invalide'
             }, { status: 400 });
         }
 
-        const { email } = validation.data;
+        const { email: identifier } = validation.data;
 
         // Configuration Airtable
         const base = new Airtable({
@@ -50,21 +50,21 @@ export async function POST(request: NextRequest) {
         const tableName = process.env.AIRTABLE_TABLE_ID || 'Users';
         const table = base(tableName);
 
-        console.log(`Recherche de l'email: ${email} dans la table: ${tableName}`);
+        console.log(`Recherche de l'identifiant: ${identifier} dans la table: ${tableName}`);
 
-        // ✅ Utiliser la fonction sécurisée pour créer le filtre
-        const filterFormula = createEmailFilterFormula(email);
+        // ✅ Utiliser la fonction sécurisée pour chercher dans username OU mail
+        const filterFormula = createIdentifierFilterFormula(identifier);
 
         const records = await table.select({
             filterByFormula: filterFormula,
             maxRecords: 1
         }).firstPage();
 
-        const emailExists = records.length > 0;
-        
-        console.log(`Email ${email} trouvé: ${emailExists}`);
-        
-        return NextResponse.json({ exists: emailExists });
+        const identifierExists = records.length > 0;
+
+        console.log(`Identifiant ${identifier} trouvé: ${identifierExists}`);
+
+        return NextResponse.json({ exists: identifierExists });
     } catch (error) {
         console.error('Erreur vérification email:', error);
         return NextResponse.json({ 

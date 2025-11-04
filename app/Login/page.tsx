@@ -39,7 +39,7 @@ function LoginForm() {
         if (errorParam) {
             switch (errorParam) {
                 case 'CredentialsSignin':
-                    setError('Email non autorisé ou problème de connexion')
+                    setError('Identifiant non autorisé ou problème de connexion')
                     break
                 case 'Configuration':
                     setError('Problème de configuration du serveur')
@@ -59,7 +59,7 @@ function LoginForm() {
         const email = formData.get('email') as string
 
         if (!email) {
-            setError('Email requis')
+            setError('Identifiant requis')
             setIsLoading(false)
             return
         }
@@ -72,7 +72,7 @@ function LoginForm() {
 
             if (result?.error) {
                 console.error('Erreur de connexion:', result.error)
-                setError('Email non autorisé ou erreur de connexion')
+                setError('Identifiant non autorisé ou erreur de connexion')
             } else if (result?.ok) {
                 router.push('/Chat')
                 router.refresh()
@@ -104,7 +104,7 @@ function LoginForm() {
                     <CardHeader>
                         <CardTitle>E2I AgentSecu</CardTitle>
                         <CardDescription>
-                            Connexion par email autorisé
+                            Connexion par email ou identifiant autorisé
                         </CardDescription>
                         <CardAction>
                         </CardAction>
@@ -118,12 +118,12 @@ function LoginForm() {
                                     </div>
                                 )}
                                 <div className="grid gap-2">
-                                    <Label htmlFor="email">Email</Label>
+                                    <Label htmlFor="email">Email ou Identifiant</Label>
                                     <Input
                                         id="email"
                                         name="email"
-                                        type="email"
-                                        placeholder="votre@email.com"
+                                        type="text"
+                                        placeholder="votre@email.com ou identifiant"
                                         required
                                         disabled={isLoading}
                                     />

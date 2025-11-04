@@ -149,7 +149,9 @@ export default function ChatPage() {
     );
 
     const handleSignOut = useCallback(async () => {
-        await signOut({ callbackUrl: '/Login' });
+        // Utiliser l'URL de base pour éviter les problèmes de redirection
+        const baseUrl = window.location.origin;
+        await signOut({ callbackUrl: `${baseUrl}/Login`, redirect: true });
     }, []);
 
     // Loading state
