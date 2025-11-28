@@ -125,10 +125,9 @@ const AIChatInput = ({ value, onChange, onSubmit, onMicClick, isRecording }: AIC
       <motion.div
         ref={wrapperRef}
         className="w-full max-w-4xl"
-        variants={containerVariants}
         animate={isActive || value ? "expanded" : "collapsed"}
         initial="collapsed"
-        style={{ overflow: "hidden", borderRadius: 16, background: "#fff" }}
+        style={{ overflow: "hidden", borderRadius: 16, background: "#fff", boxShadow: "0 2px 8px 0 rgba(0,0,0,0.08)" }}
         onClick={handleActivate}
       >
         <div className="flex flex-col items-stretch w-full h-full">
