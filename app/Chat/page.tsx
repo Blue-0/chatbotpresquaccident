@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signOut } from 'next-auth/react';
+import { AIChatInput } from "@/components/ui/ai-chat-input"
 import { useRouter } from 'next/navigation';
 import {
     animateHeader,
@@ -201,75 +202,13 @@ export default function ChatPage() {
 
                 {/* Input Area - Barre unifiée */}
                 <Card className="bg-transparent py-0 shadow-none border-0">
-                    <CardFooter className="p-0 bg-transparent border-0">
-                        <div className="w-full">
-                            {/* Barre d'input unifiée qui change d'état */}
-                            <div className="flex gap-2 items-center bg-gray-50 rounded-3xl p-2 border-2 border-gray-200 focus-within:border-[#43bb8c] transition-colors min-h-[52px]">
-                                
-                                {/* État normal : textarea + bouton envoi */}
-                                {!isRecording && (
-                                    <>
-                                        <textarea
-                                            value={inputMessage}
-                                            onChange={(e) => setInputMessage(e.target.value)}
-                                            placeholder="Tapez votre message ici..."
-                                            className="flex-1 min-h-[44px] bg-transparent border-none focus:ring-0 focus:outline-none text-gray-800 resize-none py-3 flex items-center"
-                                            style={{ lineHeight: '1.2', display: 'flex', alignItems: 'center' }}
-                                            rows={1}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && !e.shiftKey) {
-                                                    e.preventDefault();
-                                                    if (inputMessage.trim()) {
-                                                        handleSubmit(e);
-                                                    }
-                                                }
-                                            }}
-                                        />
-                                        <Button
-                                            type="button"
-                                            disabled={!inputMessage.trim()}
-                                            onClick={handleSubmit}
-                                            className="bg-[#43bb8c] hover:bg-[#3aa078] disabled:bg-gray-400 text-white px-3 sm:px-4 py-2 h-[44px] rounded-full transition-colors flex-shrink-0"
-                                        >
-                                            <ArrowUp size={20} strokeWidth={2} />
-                                        </Button>
-                                    </>
-                                )}
-
-                                {/* État enregistrement : Voicewave au centre */}
-                                {isRecording && (
-                                    <div className="flex-1 flex items-center justify-center px-2 sm:px-4">
-                                        <Voicewave
-                                            audioStream={audioStream}
-                                            isRecording={isRecording}
-                                            width={voicewaveConfig.width}
-                                            height={40}
-                                            barColor="#43bb8c"
-                                            barCount={voicewaveConfig.barCount}
-                                            barWidth={voicewaveConfig.barWidth}
-                                            barGap={voicewaveConfig.barGap}
-                                            barRadius={2}
-                                            style="rounded"
-                                            barMinHeight={4}
-                                            barMaxHeight={0.8}
-                                            sensitivity={2}
-                                        />
-                                    </div>
-                                )}
-
-                                {/* Bouton microphone toujours visible à droite */}
-                                <Button
-                                    ref={micRef}
-                                    type="button"
-                                    variant="outline"
-                                    className="border-[#43bb8c] text-[#43bb8c] hover:bg-[#43bb8c] hover:text-white transition-colors px-3 sm:px-4 py-2 h-[44px] rounded-full flex-shrink-0"
-                                    onClick={handleMicClick}
-                                >
-                                    {isRecording ? <Square size={20} strokeWidth={1.75} /> : <Mic size={20} strokeWidth={1.75} />}
-                                </Button>
-                            </div>
-                        </div>
-                    </CardFooter>
+                    <AIChatInput
+                        value={inputMessage}
+                        onChange={setInputMessage}
+                        onSubmit={handleSubmit}
+                        onMicClick={handleMicClick}
+                        isRecording={isRecording}
+                    />
                 </Card>
             </div>
         </div>
