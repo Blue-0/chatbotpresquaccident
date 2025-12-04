@@ -1,51 +1,32 @@
 import NextAuth, { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import Airtable from 'airtable'
-import { createIdentifierFilterFormula } from '@/src/lib/airtable-utils'
+
 
 const authOptions: NextAuthOptions = {
     secret: process.env.NEXTAUTH_SECRET,
     providers: [
         CredentialsProvider({
             id: 'credentials',
-            name: 'Email or Username Verification',
+            name: 'First Name Login',
             credentials: {
-                email: { label: 'Email ou Identifiant', type: 'text', placeholder: 'votre@email.com ou identifiant' }
+                name: { label: 'Prénom', type: 'text', placeholder: 'Votre prénom' }
             },
             async authorize(credentials) {
                 try {
-                    if (!credentials?.email) {
-                        throw new Error('Identifiant requis')
+                    if (!credentials?.name) {
+                        throw new Error('Prénom requis')
                     }
 
-                    // Configuration Airtable
-                    const base = new Airtable({
-                        apiKey: process.env.AIRTABLE_API_KEY,
-                    }).base(process.env.AIRTABLE_BASE_ID || '')
-
-                    const tableName = process.env.AIRTABLE_TABLE_ID || 'Users'
-                    const table = base(tableName)
-
-                    // Vérifier si l'identifiant existe dans Airtable (username OU mail)
-                    const filterFormula = createIdentifierFilterFormula(credentials.email)
-                    const records = await table.select({
-                        filterByFormula: filterFormula,
-                        maxRecords: 1
-                    }).firstPage()
-
-                    if (records.length > 0) {
-                        const userEmail = records[0].fields.mail as string || credentials.email
-                        const user = {
-                            id: records[0].id,
-                            email: userEmail,
-                            name: records[0].fields.name as string || userEmail
-                        }
-                        return user
+                    // Plus de vérification Airtable, on accepte tout prénom
+                    const user = {
+                        id: Date.now().toString(), // ID temporaire unique basé sur le timestamp
+                        name: credentials.name,
+                        email: `${credentials.name.toLowerCase().replace(/\s+/g, '.')}@guest.local` // Email fictif pour NextAuth
                     }
 
-                    throw new Error('Identifiant non autorisé')
+                    return user
                 } catch (error) {
-                    console.error('Erreur Airtable:', error)
+                    console.error('Erreur Auth:', error)
                     return null
                 }
             }

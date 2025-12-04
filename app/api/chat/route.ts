@@ -25,7 +25,13 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
 
-        console.log('📤 Envoi vers n8n:', body);
+        // Injecter le nom de l'utilisateur dans le payload
+        const payload = {
+            ...body,
+            userName: token.name || 'Utilisateur'
+        };
+
+        console.log('📤 Envoi vers n8n:', payload);
 
         // Appel vers votre webhook n8n depuis le serveur Next.js
         // Utiliser la variable d'environnement ou fallback
@@ -37,7 +43,7 @@ export async function POST(request: NextRequest) {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(body),
+            body: JSON.stringify(payload),
         });
 
         console.log('🔍 Status de la réponse n8n:', response.status);
@@ -46,9 +52,9 @@ export async function POST(request: NextRequest) {
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`❌ Erreur webhook n8n: ${response.status} - ${errorText}`);
-            
+
             return NextResponse.json(
-                { 
+                {
                     error: `Erreur webhook n8n: ${response.status}`,
                     response: 'Désolé, je ne peux pas traiter votre demande pour le moment.'
                 },
@@ -89,23 +95,23 @@ export async function POST(request: NextRequest) {
         console.log('✅ Réponse de n8n:', data);
 
         return NextResponse.json(data);
-        
+
     } catch (error) {
         console.error('💥 Erreur API chat:', error);
-        
+
         // Si c'est une erreur de fetch (réseau, timeout, etc.)
         if (error instanceof TypeError && error.message.includes('fetch')) {
             return NextResponse.json(
-                { 
+                {
                     error: 'Erreur de connexion au webhook',
                     response: 'Problème de connexion avec le serveur. Veuillez réessayer.'
                 },
                 { status: 500 }
             );
         }
-        
+
         return NextResponse.json(
-            { 
+            {
                 error: 'Erreur interne du serveur',
                 response: 'Une erreur inattendue s\'est produite.'
             },

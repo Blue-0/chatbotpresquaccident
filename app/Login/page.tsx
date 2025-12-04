@@ -39,7 +39,7 @@ function LoginForm() {
         if (errorParam) {
             switch (errorParam) {
                 case 'CredentialsSignin':
-                    setError('Identifiant non autorisé ou problème de connexion')
+                    setError('Erreur de connexion')
                     break
                 case 'Configuration':
                     setError('Problème de configuration du serveur')
@@ -56,23 +56,23 @@ function LoginForm() {
         setError(null)
 
         const formData = new FormData(event.currentTarget)
-        const email = formData.get('email') as string
+        const name = formData.get('name') as string
 
-        if (!email) {
-            setError('Identifiant requis')
+        if (!name) {
+            setError('Prénom requis')
             setIsLoading(false)
             return
         }
 
         try {
             const result = await signIn('credentials', {
-                email,
+                name,
                 redirect: false,
             })
 
             if (result?.error) {
                 console.error('Erreur de connexion:', result.error)
-                setError('Identifiant non autorisé ou erreur de connexion')
+                setError('Erreur de connexion')
             } else if (result?.ok) {
                 router.push('/Chat')
                 router.refresh()
@@ -104,7 +104,7 @@ function LoginForm() {
                     <CardHeader>
                         <CardTitle>E2I AgentSecu</CardTitle>
                         <CardDescription>
-                            Connexion par email ou identifiant autorisé
+                            Connexion avec votre prénom
                         </CardDescription>
                         <CardAction>
                         </CardAction>
@@ -118,21 +118,21 @@ function LoginForm() {
                                     </div>
                                 )}
                                 <div className="grid gap-2">
-                                    <Label htmlFor="email">Email ou Identifiant</Label>
+                                    <Label htmlFor="name">Prénom</Label>
                                     <Input
-                                        id="email"
-                                        name="email"
+                                        id="name"
+                                        name="name"
                                         type="text"
-                                        placeholder="votre@email.com ou identifiant"
+                                        placeholder="Votre prénom"
                                         required
                                         disabled={isLoading}
                                     />
                                 </div>
                             </div>
-                            <Button 
-                                variant={"outline"} 
-                                type="submit" 
-                                className="w-full mt-4" 
+                            <Button
+                                variant={"outline"}
+                                type="submit"
+                                className="w-full mt-4"
                                 disabled={isLoading}
                             >
                                 {isLoading ? 'Vérification...' : 'Se connecter'}
