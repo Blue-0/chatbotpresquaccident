@@ -32,18 +32,18 @@
 ║                   AFTER REFACTORING                          ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                              ║
-║  AnimatedVoicewave.tsx (67 lignes)                          ║
-║  ├── 1 ref                                                  ║
-║  ├── Animation directe                                      ║
-║  ├── Config inline                                          ║
-║  └── 2 props CSS (opacity, translateY)                      ║
+║  AnimatedVoicewave.tsx (67 lignes)                           ║
+║  ├── 1 ref                                                   ║
+║  ├── Animation directe                                       ║
+║  ├── Config inline                                           ║
+║  └── 2 props CSS (opacity, translateY)                       ║
 ║                                                              ║
-║  const ANIMATION_CONFIG = {                                 ║
-║    enter: { opacity: [0,1], translateY: [20,0], ... },     ║
-║    exit: { opacity: [1,0], translateY: [0,-20], ... }      ║
+║  const ANIMATION_CONFIG = {                                  ║
+║    enter: { opacity: [0,1], translateY: [20,0], ... },       ║
+║    exit: { opacity: [1,0], translateY: [0,-20], ... }        ║
 ║  }                                                           ║
 ║                                                              ║
-║  TOTAL: ~470 lignes | 3 fichiers | Complexité: 3/10        ║
+║  TOTAL: ~470 lignes | 3 fichiers | Complexité: 3/10          ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
