@@ -10,20 +10,14 @@ import {
     createMicPulse,
     resetScale,
 } from '@/src/lib/animations';
-import { Card, CardContent, CardFooter } from '@/src/components/ui/card';
-import { Button } from '@/src/components/ui/button';
-import { Mic, Square, ArrowUp } from 'lucide-react';
+import { Card, CardContent } from '@/src/components/ui/card';
 import { useSessionId } from '@/app/hooks/useSessionId';
 import { useAudioRecording } from '@/app/hooks/useAudioRecording';
 import { useTextToSpeech } from '@/app/hooks/useTextToSpeech';
-import { useResponsiveVoicewave } from '@/app/hooks/useResponsiveVoicewave';
 import { ParticlesBackground } from '@/app/components/ParticlesBackground';
 import { ChatHeader } from '@/app/components/ChatHeader';
 import { ChatMessage } from '@/app/components/ChatMessage';
-import { ChatInput } from '@/app/components/ChatInput';
 import { LoadingScreen } from '@/app/components/LoadingScreen';
-import { AnimatedVoicewave } from '@/app/components/AnimatedVoicewave';
-import Voicewave from '@/app/components/Voicewave';
 import { transcribeAudio } from '@/app/services/transcriptionService';
 import {
     type Message,
@@ -52,9 +46,8 @@ export default function ChatPage() {
     const [inputMessage, setInputMessage] = useState('');
 
     // Hooks
-    const { isRecording, audioStream, startRecording, stopRecording } = useAudioRecording();
+    const { isRecording, startRecording, stopRecording } = useAudioRecording();
     const { isSpeaking, speak } = useTextToSpeech();
-    const voicewaveConfig = useResponsiveVoicewave();
 
     // Authentication
     useEffect(() => {
