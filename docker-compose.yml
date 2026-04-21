@@ -1,12 +1,5 @@
 version: "3.9"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Réseau Traefik / reverse-proxy existant sur le Swarm
-# ─────────────────────────────────────────────────────────────────────────────
-networks:
-  web:
-    external: true
-
 services:
   web:
     # Image pré-buildée — remplacez par votre registry si besoin
@@ -40,7 +33,7 @@ services:
 
     # ─── Healthcheck ─────────────────────────────────────────────────────────
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: [ "CMD", "wget", "-qO-", "http://localhost:3000/api/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -53,10 +46,10 @@ services:
 
       # Mise à jour progressive (rolling update)
       update_config:
-        parallelism: 1          # 1 réplica mis à jour à la fois
-        delay: 10s              # attente entre chaque réplica
+        parallelism: 1 # 1 réplica mis à jour à la fois
+        delay: 10s # attente entre chaque réplica
         failure_action: rollback
-        order: start-first      # démarre le nouveau avant de couper l'ancien
+        order: start-first # démarre le nouveau avant de couper l'ancien
 
       # Rollback automatique en cas d'échec
       rollback_config:
@@ -80,3 +73,10 @@ services:
         reservations:
           cpus: "0.25"
           memory: 128M
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Réseau Traefik / reverse-proxy existant sur le Swarm
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  web:
+    external: true
