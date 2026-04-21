@@ -2,6 +2,50 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { validateOrigin } from '@/src/lib/csrf-protection';
 
+// ─── Round-robin webhook pool ────────────────────────────────────────────────
+// Ce Map mémorise quel webhook est assigné à chaque sessionId.
+// Le compteur global garantit une distribution strictement 1→2→3→1→...
+const sessionWebhookMap = new Map<string, number>();
+let webhookCounter = 0;
+
+function getWebhookUrls(): string[] {
+    const urls = [
+        process.env.N8N_WEBHOOK_URL_1,
+        process.env.N8N_WEBHOOK_URL_2,
+        process.env.N8N_WEBHOOK_URL_3,
+    ];
+
+    const missing = urls
+        .map((url, i) => (!url ? `N8N_WEBHOOK_URL_${i + 1}` : null))
+        .filter(Boolean);
+
+    if (missing.length > 0) {
+        throw new Error(
+            `Variables d'environnement manquantes : ${missing.join(', ')}`
+        );
+    }
+
+    return urls as string[];
+}
+
+function resolveWebhookForSession(sessionId: string): string {
+    const webhookUrls = getWebhookUrls();
+
+    if (!sessionWebhookMap.has(sessionId)) {
+        // Nouvelle session : assigner le prochain webhook en round-robin
+        const index = webhookCounter % webhookUrls.length;
+        sessionWebhookMap.set(sessionId, index);
+        webhookCounter++;
+        console.log(
+            `🔄 Session "${sessionId}" → webhook #${index + 1} (round-robin)`
+        );
+    }
+
+    const index = sessionWebhookMap.get(sessionId)!;
+    return webhookUrls[index];
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function POST(request: NextRequest) {
     try {
         // ✅ Protection CSRF - Valider l'origine
@@ -33,10 +77,10 @@ export async function POST(request: NextRequest) {
 
         console.log('📤 Envoi vers n8n:', payload);
 
-        // Appel vers votre webhook n8n depuis le serveur Next.js
-        // Utiliser la variable d'environnement ou fallback
-        const webhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.e2i-ia.fr/webhook/chatbot';
-        console.log('🔗 Webhook URL:', webhookUrl);
+        // Résoudre le webhook pour cette session (round-robin, persisté par sessionId)
+        const sessionId: string = body.sessionId || token.sub || 'default';
+        const webhookUrl = resolveWebhookForSession(sessionId);
+        console.log('🔗 Webhook URL sélectionné:', webhookUrl);
 
         const response = await fetch(webhookUrl, {
             method: 'POST',
@@ -71,7 +115,7 @@ export async function POST(request: NextRequest) {
             try {
                 // Lire le texte brut d'abord pour debug
                 const textData = await response.text();
-                console.log('📝 Réponse brute de n8n:', textData.substring(0, 200)); // Premiers 200 chars
+                console.log('📝 Réponse brute de n8n:', textData.substring(0, 200));
 
                 // Si le texte est vide, retourner un message par défaut
                 if (!textData || textData.trim() === '') {
@@ -83,7 +127,6 @@ export async function POST(request: NextRequest) {
                 }
             } catch (parseError) {
                 console.error('❌ Erreur parsing JSON:', parseError);
-                // Si le parsing échoue, utiliser un message par défaut
                 data = { response: 'Erreur de traitement de la réponse' };
             }
         } else {
