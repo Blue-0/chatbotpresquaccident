@@ -1,31 +1,82 @@
 version: "3.9"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Réseau Traefik / reverse-proxy existant sur le Swarm
+# ─────────────────────────────────────────────────────────────────────────────
 networks:
   web:
     external: true
 
 services:
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Image pré-buildée — remplacez par votre registry si besoin
+    # Ex: registry.e2i-ia.fr/chatbotpresquaccident:latest
+    image: ${IMAGE_NAME:-chatbotpresquaccident}:${IMAGE_TAG:-latest}
+
+    # ─── Variables d'environnement ───────────────────────────────────────────
     environment:
       NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Airtable
       AIRTABLE_API_KEY: ${AIRTABLE_API_KEY}
       AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID}
       AIRTABLE_TABLE_ID: ${AIRTABLE_TABLE_ID}
+      # Webhooks n8n (round-robin)
       N8N_WEBHOOK_URL_1: ${N8N_WEBHOOK_URL_1}
       N8N_WEBHOOK_URL_2: ${N8N_WEBHOOK_URL_2}
       N8N_WEBHOOK_URL_3: ${N8N_WEBHOOK_URL_3}
+      # Auth
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      # Autres
       API_BASE_URL: ${API_BASE_URL:-http://localhost:3000}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXT_TELEMETRY_DISABLED: "1"
+
     ports:
       - "3000:3000"
+
     networks:
       - web
+
+    # ─── Healthcheck ─────────────────────────────────────────────────────────
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # ─── Configuration Swarm ─────────────────────────────────────────────────
     deploy:
+      mode: replicated
+      replicas: 1
+
+      # Mise à jour progressive (rolling update)
+      update_config:
+        parallelism: 1          # 1 réplica mis à jour à la fois
+        delay: 10s              # attente entre chaque réplica
+        failure_action: rollback
+        order: start-first      # démarre le nouveau avant de couper l'ancien
+
+      # Rollback automatique en cas d'échec
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        failure_action: pause
+        order: stop-first
+
+      # Politique de redémarrage (remplace 'restart:')
       restart_policy:
-        condition: unless-stopped
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+      # Limites de ressources
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
