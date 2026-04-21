@@ -14,7 +14,9 @@ services:
       AIRTABLE_API_KEY: ${AIRTABLE_API_KEY}
       AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID}
       AIRTABLE_TABLE_ID: ${AIRTABLE_TABLE_ID}
-      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      N8N_WEBHOOK_URL_1: ${N8N_WEBHOOK_URL_1}
+      N8N_WEBHOOK_URL_2: ${N8N_WEBHOOK_URL_2}
+      N8N_WEBHOOK_URL_3: ${N8N_WEBHOOK_URL_3}
       API_BASE_URL: ${API_BASE_URL:-http://localhost:3000}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
@@ -24,4 +26,6 @@ services:
       - "3000:3000"
     networks:
       - web
-    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: unless-stopped
