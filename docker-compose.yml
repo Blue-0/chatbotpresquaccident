@@ -24,8 +24,7 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
     ports:
       - "3000:3000"
-    networks:
-      - web
+
     deploy:
       restart_policy:
         condition: unless-stopped
