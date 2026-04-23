@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from 'next-auth/jwt';
 import { validateOrigin } from '@/src/lib/csrf-protection';
 
-// Voix Mistral configurée
+// Modèle et voix Mistral TTS
+const TTS_MODEL = 'voxtral-mini-tts-2603';
 const DEFAULT_VOICE_ID = '5a271406-039d-46fe-835b-fbbb00eaf08d';
 
 export async function POST(request: NextRequest) {
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
+                model: TTS_MODEL,
                 input: text.trim(),
                 voice_id: voice_id || DEFAULT_VOICE_ID,
                 response_format: 'mp3',
